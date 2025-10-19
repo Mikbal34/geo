@@ -5,6 +5,10 @@ import { createLLMRunsBatch, createScoresLLMBatch, createScoreOverall } from '@/
 import { runAllLLMs } from '@/lib/llm/llm-runner'
 import { computeScores } from '@/lib/llm/compute-scores'
 
+// Force dynamic rendering - disable all caching
+export const dynamic = 'force-dynamic'
+export const revalidate = 0
+
 /**
  * Vercel Cron Job Endpoint
  * Runs every 5 minutes (configured in vercel.json)
