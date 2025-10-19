@@ -22,6 +22,10 @@ export async function GET(
     }
 
     // Calculate next analysis time
+    // Apply defaults BEFORE checking conditions (NULL values are falsy!)
+    const isEnabled = brand.auto_analysis_enabled ?? true
+    const interval = brand.auto_analysis_interval ?? 1440
+
     let next_analysis_at = null
     if (brand.last_auto_analysis_at) {
       // FORCE UTC: Database doesn't include 'Z', so add it
@@ -29,18 +33,18 @@ export async function GET(
         ? brand.last_auto_analysis_at
         : brand.last_auto_analysis_at + 'Z'
       const lastRun = new Date(lastRunStr)
-      const nextRun = new Date(lastRun.getTime() + (brand.auto_analysis_interval || 1440) * 60 * 1000)
+      const nextRun = new Date(lastRun.getTime() + interval * 60 * 1000)
       next_analysis_at = nextRun.toISOString()
-    } else if (brand.auto_analysis_enabled) {
+    } else if (isEnabled) {
       // If never run before but auto-analysis is enabled, schedule from now
       const now = new Date()
-      const nextRun = new Date(now.getTime() + (brand.auto_analysis_interval || 1440) * 60 * 1000)
+      const nextRun = new Date(now.getTime() + interval * 60 * 1000)
       next_analysis_at = nextRun.toISOString()
     }
 
     const responseData = {
-      auto_analysis_enabled: brand.auto_analysis_enabled ?? true,
-      auto_analysis_interval: brand.auto_analysis_interval ?? 1440,
+      auto_analysis_enabled: isEnabled,
+      auto_analysis_interval: interval,
       next_analysis_at
     }
 
