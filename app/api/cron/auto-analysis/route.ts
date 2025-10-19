@@ -12,10 +12,14 @@ import { computeScores } from '@/lib/llm/compute-scores'
  */
 export async function GET(request: Request) {
   try {
-    // Verify this is called by Vercel Cron (security check)
-    const authHeader = request.headers.get('authorization')
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    // Optional security check - only if CRON_SECRET is set
+    const cronSecret = process.env.CRON_SECRET
+    if (cronSecret) {
+      const authHeader = request.headers.get('authorization')
+      if (authHeader !== `Bearer ${cronSecret}`) {
+        console.log('[CRON] Unauthorized request - invalid secret')
+        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      }
     }
 
     console.log('[CRON] Starting auto-analysis run...')
