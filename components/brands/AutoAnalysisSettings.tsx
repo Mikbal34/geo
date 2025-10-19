@@ -34,9 +34,9 @@ export default function AutoAnalysisSettings({ brandId }: AutoAnalysisSettingsPr
 
   // Update countdown timer every 10 seconds
   useEffect(() => {
-    const timer = setInterval(() => {
+    const timer: NodeJS.Timeout = setInterval(() => {
       setCurrentTime(new Date())
-    }, 10000) // Update every 10 seconds
+    }, 10000)
 
     return () => clearInterval(timer)
   }, [])
