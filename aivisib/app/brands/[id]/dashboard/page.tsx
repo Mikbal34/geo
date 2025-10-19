@@ -115,7 +115,7 @@ export default function DashboardPage() {
     },
     {
       category: 'Mentions',
-      score: Math.round((filteredScore.mentions_raw_total || 0) / 10 * 100), // Normalize to 100
+      score: Math.round((('mentions_raw_total' in filteredScore ? filteredScore.mentions_raw_total : filteredScore.mentions_raw) || 0) / 10 * 100), // Normalize to 100
       description: 'Total brand mentions'
     }
   ] : []
@@ -126,7 +126,7 @@ export default function DashboardPage() {
     Visibility: Math.round(score.visibility_pct || 0),
     Position: Math.round(100 - ((score.avg_position_raw || 10) * 10)),
     Sentiment: Math.round(score.sentiment_pct || 0),
-    Mentions: Math.round((score.mentions_raw_total || 0) / 10 * 100)
+    Mentions: Math.round((score.mentions_raw || 0) / 10 * 100)
   }))
 
   // Radar chart data
