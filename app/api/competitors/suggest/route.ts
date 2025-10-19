@@ -5,7 +5,7 @@ import { formatErrorResponse } from '@/lib/utils/errors'
 
 export async function POST(request: Request) {
   try {
-    const { brand_id, count = 3 } = await request.json()
+    const { brand_id, count = 10 } = await request.json()
 
     // Get brand details
     const brand = await getBrandById(brand_id)

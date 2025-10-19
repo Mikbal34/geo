@@ -23,7 +23,7 @@ export default function SuggestCompetitorsButton({ brandId, onSuggested }: { bra
       const res = await fetch('/api/competitors/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand_id: brandId, count: 3 }),
+        body: JSON.stringify({ brand_id: brandId, count: 10 }),
       })
       const data = await res.json()
 

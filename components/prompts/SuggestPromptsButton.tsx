@@ -17,12 +17,21 @@ export default function SuggestPromptsButton({ brandId, onSuggested }: { brandId
       const res = await fetch('/api/prompts/suggest', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ brand_id: brandId, count: 5 }),
+        body: JSON.stringify({ brand_id: brandId, count: 10 }),
       })
       const data = await res.json()
-      setSuggestions(data.suggestions || [])
-      setSelected(new Set(data.suggestions.map((_: string, i: number) => i))) // Select all by default
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Failed to get suggestions')
+      }
+
+      const validSuggestions = data.suggestions || []
+      setSuggestions(validSuggestions)
+      setSelected(new Set(validSuggestions.map((_: string, i: number) => i))) // Select all by default
       setShowModal(true)
+    } catch (error) {
+      console.error('Error getting suggestions:', error)
+      alert(`Failed to get suggestions: ${error instanceof Error ? error.message : 'Unknown error'}`)
     } finally {
       setLoading(false)
     }

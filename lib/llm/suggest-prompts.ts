@@ -4,7 +4,7 @@ import { getRegionConfig } from '@/lib/constants/regions'
 
 export async function generatePromptSuggestions(
   brand: Brand,
-  count: number = 5
+  count: number = 10
 ): Promise<string[]> {
   try {
     const regionConfig = getRegionConfig(brand.region || 'Global')

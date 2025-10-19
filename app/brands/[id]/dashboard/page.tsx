@@ -52,38 +52,94 @@ export default function DashboardPage() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistory | null>(null)
   const [timeUntilNextRun, setTimeUntilNextRun] = useState<string>('')
+  const [autoAnalysisSettings, setAutoAnalysisSettings] = useState<{
+    auto_analysis_enabled: boolean
+    auto_analysis_interval: number
+    next_analysis_at: string | null
+  } | null>(null)
 
   useEffect(() => {
     fetchScores()
     fetchAnalysisHistory()
+    fetchAutoAnalysisSettings()
+
+    // Refetch auto-analysis settings every 5 seconds to keep in sync with Settings page
+    const settingsInterval = setInterval(fetchAutoAnalysisSettings, 5000)
+
+    // Refetch when page becomes visible (e.g., when returning from Settings page)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchAutoAnalysisSettings()
+      }
+    }
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+
+    return () => {
+      clearInterval(settingsInterval)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
+    }
   }, [brandId])
 
-  // Calculate time until next scheduled run (daily at 03:00 UTC)
+  // Fetch auto-analysis settings
+  const fetchAutoAnalysisSettings = async () => {
+    try {
+      const res = await fetch(`/api/brands/${brandId}/auto-analysis-settings`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      })
+      const data = await res.json()
+      console.log('[DASHBOARD] Fetched auto-analysis settings:', data)
+      setAutoAnalysisSettings(data)
+    } catch (error) {
+      console.error('Error fetching auto-analysis settings:', error)
+    }
+  }
+
+  // Calculate countdown - SIMPLE!
   useEffect(() => {
+    if (!autoAnalysisSettings) return
+
     const calculateTimeUntilNextRun = () => {
-      const now = new Date()
-      const nextRun = new Date()
-
-      // Set to 03:00 UTC
-      nextRun.setUTCHours(3, 0, 0, 0)
-
-      // If it's already past 03:00 UTC today, set to tomorrow
-      if (now.getTime() > nextRun.getTime()) {
-        nextRun.setDate(nextRun.getDate() + 1)
+      if (!autoAnalysisSettings.auto_analysis_enabled) {
+        setTimeUntilNextRun('Disabled')
+        return
       }
 
-      const diff = nextRun.getTime() - now.getTime()
-      const hours = Math.floor(diff / (1000 * 60 * 60))
-      const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+      if (!autoAnalysisSettings.next_analysis_at) {
+        setTimeUntilNextRun('Not scheduled')
+        return
+      }
 
-      setTimeUntilNextRun(`${hours}h ${minutes}m`)
+      const now = new Date()
+      const nextRun = new Date(autoAnalysisSettings.next_analysis_at)
+
+      if (nextRun <= now) {
+        setTimeUntilNextRun('Soon')
+        return
+      }
+
+      const diffMs = nextRun.getTime() - now.getTime()
+      const diffMins = Math.floor(diffMs / (1000 * 60))
+      const hours = Math.floor(diffMins / 60)
+      const minutes = diffMins % 60
+      const days = Math.floor(hours / 24)
+
+      if (days > 0) {
+        setTimeUntilNextRun(`${days}d ${hours % 24}h ${minutes}m`)
+      } else if (hours > 0) {
+        setTimeUntilNextRun(`${hours}h ${minutes}m`)
+      } else {
+        setTimeUntilNextRun(`${minutes}m`)
+      }
     }
 
     calculateTimeUntilNextRun()
-    const interval = setInterval(calculateTimeUntilNextRun, 60000) // Update every minute
-
+    const interval = setInterval(calculateTimeUntilNextRun, 10000)
     return () => clearInterval(interval)
-  }, [])
+  }, [autoAnalysisSettings])
 
   useEffect(() => {
     fetchCompetitorScores()
@@ -433,7 +489,6 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-sm font-bold text-indigo-900">{timeUntilNextRun}</span>
-                    <span className="text-[10px] text-slate-500">(Daily 06:00)</span>
                   </div>
                 </div>
 
@@ -605,8 +660,8 @@ export default function DashboardPage() {
                     <p className="text-[9px] text-slate-500">Brands with highest visibility</p>
                   </div>
 
-                  {/* Vertical Cards */}
-                  <div className="space-y-2">
+                  {/* Vertical Cards - Scrollable */}
+                  <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: '320px' }}>
                     {competitorRankingData.length > 0 ? competitorRankingData.map((item) => (
                       <div
                         key={item.rank}

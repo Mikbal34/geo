@@ -1,14 +1,19 @@
 'use client'
 
 import { useRouter, usePathname } from 'next/navigation'
-import { Sparkles, Plus, Home, BarChart3 } from 'lucide-react'
+import { Sparkles, Plus, Home, BarChart3, Settings } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 export default function Navigation() {
   const router = useRouter()
   const pathname = usePathname()
-  
+
   const isHome = pathname === '/'
+
+  // Extract brand ID from pathname if we're on a brand page
+  const brandIdMatch = pathname.match(/\/brands\/([^\/]+)/)
+  const brandId = brandIdMatch ? brandIdMatch[1] : null
+  const isOnBrandPage = brandId && brandId !== 'new'
 
   return (
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-slate-200/50 shadow-sm">
@@ -52,6 +57,17 @@ export default function Navigation() {
                   ← Back
                 </Button>
               </>
+            )}
+            {isOnBrandPage && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => router.push(`/brands/${brandId}/settings`)}
+                className="hidden md:flex"
+              >
+                <Settings className="w-4 h-4" />
+                Settings
+              </Button>
             )}
             <Button
               size="sm"

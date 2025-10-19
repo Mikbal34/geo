@@ -62,54 +62,33 @@ export async function POST(request: Request) {
       console.error('Failed to create analysis run:', runError)
     }
 
-    // Step 1: Find prompts that don't have LLM runs yet
-    const { data: existingRuns } = await supabase
-      .from('llm_runs')
-      .select('prompt_id, llm')
-      .in('prompt_id', prompts.map(p => p.id))
-
-    // Group existing runs by prompt_id
-    const existingRunsByPrompt = new Map<string, Set<string>>()
-    existingRuns?.forEach(run => {
-      if (!existingRunsByPrompt.has(run.prompt_id)) {
-        existingRunsByPrompt.set(run.prompt_id, new Set())
-      }
-      existingRunsByPrompt.get(run.prompt_id)!.add(run.llm)
-    })
-
-    // Filter prompts that need LLM runs (don't have all 3 LLMs)
-    const promptsNeedingRuns = prompts.filter(prompt => {
-      const existingLLMs = existingRunsByPrompt.get(prompt.id)
-      if (!existingLLMs) return true // No runs at all
-      // Need all 3 LLMs: chatgpt, gemini, perplexity
-      return existingLLMs.size < 3 ||
-             !existingLLMs.has('chatgpt') ||
-             !existingLLMs.has('gemini') ||
-             !existingLLMs.has('perplexity')
-    })
-
-    console.log(`${promptsNeedingRuns.length} prompts need new LLM runs`)
+    // Step 1: Run ALL prompts through LLMs to get fresh, up-to-date data
+    // LLMs access the internet and competitor landscape changes over time
+    console.log(`Running LLMs for ALL ${prompts.length} prompts to get fresh data`)
 
     let newRuns: any[] = []
     let errors: any[] = []
 
-    // Step 1: Run LLMs only for prompts that need it
-    if (promptsNeedingRuns.length > 0) {
-      const result = await runAllLLMs(brand, promptsNeedingRuns)
-      newRuns = result.llm_runs
-      errors = result.errors
+    const result = await runAllLLMs(brand, prompts)
+    newRuns = result.llm_runs
+    errors = result.errors
 
-      // Step 2: Save new LLM runs to database
-      if (newRuns.length > 0) {
-        await createLLMRunsBatch(newRuns)
-      }
+    // Add analysis_run_id to all new runs for historical tracking
+    const runsWithAnalysisId = newRuns.map(run => ({
+      ...run,
+      analysis_run_id: analysisRun?.id
+    }))
+
+    // Step 2: Save new LLM runs to database
+    if (runsWithAnalysisId.length > 0) {
+      await createLLMRunsBatch(runsWithAnalysisId)
     }
 
-    // Step 3: Get all LLM runs for scoring (existing + new)
+    // Step 3: Get the runs we just created for scoring
     const { data: allRuns } = await supabase
       .from('llm_runs')
       .select('*')
-      .in('prompt_id', prompts.map(p => p.id))
+      .eq('analysis_run_id', analysisRun?.id || '')
 
     const savedRuns = allRuns || []
 

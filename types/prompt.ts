@@ -14,5 +14,5 @@ export interface CreatePromptInput {
 
 export interface SuggestPromptsInput {
   brand_id: string
-  count?: number // Default: 5
+  count?: number // Default: 10
 }

@@ -4,7 +4,7 @@ import { Brand } from '@/types/brand'
 
 export async function generateCompetitorSuggestions(
   brand: Brand,
-  count: number = 3
+  count: number = 10
 ): Promise<Array<{ name: string; domain: string; region: string }>> {
   try {
     const prompt = SUGGEST_COMPETITORS_TEMPLATE.replace('{count}', count.toString())

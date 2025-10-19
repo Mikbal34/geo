@@ -7,8 +7,8 @@ import { computeScores } from '@/lib/llm/compute-scores'
 
 /**
  * Vercel Cron Job Endpoint
- * Runs daily at scheduled time (configured in vercel.json)
- * Analyzes all active brands automatically
+ * Runs every 5 minutes (configured in vercel.json)
+ * Analyzes brands based on their individual auto-analysis intervals
  */
 export async function GET(request: Request) {
   try {
@@ -18,18 +18,44 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    console.log('[CRON] Starting daily analysis run...')
+    console.log('[CRON] Starting auto-analysis run...')
 
     const supabase = await createClient()
 
-    // Get all brands
-    const { data: brands, error: brandsError } = await supabase
+    // Get all brands with auto-analysis enabled
+    const { data: allBrands, error: brandsError } = await supabase
       .from('brands')
       .select('*')
+      .eq('auto_analysis_enabled', true)
 
     if (brandsError) throw brandsError
 
-    console.log(`[CRON] Found ${brands.length} brands to analyze`)
+    console.log(`[CRON] Found ${allBrands.length} brands with auto-analysis enabled`)
+
+    // Filter brands that need analysis based on their interval
+    const now = new Date()
+    const brands = allBrands.filter(brand => {
+      const interval = brand.auto_analysis_interval || 1440 // default 24 hours
+      const lastRun = brand.last_auto_analysis_at ? new Date(brand.last_auto_analysis_at) : null
+
+      // If never run before, run now
+      if (!lastRun) {
+        console.log(`[CRON] Brand ${brand.brand_name} - first run`)
+        return true
+      }
+
+      // Check if enough time has passed
+      const minutesSinceLastRun = (now.getTime() - lastRun.getTime()) / (1000 * 60)
+      const shouldRun = minutesSinceLastRun >= interval
+
+      if (shouldRun) {
+        console.log(`[CRON] Brand ${brand.brand_name} - ${minutesSinceLastRun.toFixed(0)} minutes since last run (interval: ${interval})`)
+      }
+
+      return shouldRun
+    })
+
+    console.log(`[CRON] ${brands.length} brands need analysis now`)
 
     const results = []
 
@@ -63,49 +89,33 @@ export async function GET(request: Request) {
 
         console.log(`[CRON] Created analysis run ${analysisRun.id} for ${brand.brand_name}`)
 
-        // Check which prompts need LLM runs
-        const { data: existingRuns } = await supabase
-          .from('llm_runs')
-          .select('prompt_id, llm')
-          .in('prompt_id', prompts.map(p => p.id))
-
-        const existingRunsByPrompt = new Map<string, Set<string>>()
-        existingRuns?.forEach(run => {
-          if (!existingRunsByPrompt.has(run.prompt_id)) {
-            existingRunsByPrompt.set(run.prompt_id, new Set())
-          }
-          existingRunsByPrompt.get(run.prompt_id)!.add(run.llm)
-        })
-
-        const promptsNeedingRuns = prompts.filter(prompt => {
-          const existingLLMs = existingRunsByPrompt.get(prompt.id)
-          if (!existingLLMs) return true
-          return existingLLMs.size < 3 ||
-                 !existingLLMs.has('chatgpt') ||
-                 !existingLLMs.has('gemini') ||
-                 !existingLLMs.has('perplexity')
-        })
+        // Run ALL prompts through LLMs every time to get fresh, up-to-date data
+        // LLMs access the internet and competitor landscape changes over time
+        console.log(`[CRON] Running LLMs for ALL ${prompts.length} prompts to get fresh data`)
 
         let newRuns: any[] = []
         let errors: any[] = []
 
-        // Run LLMs only for new prompts
-        if (promptsNeedingRuns.length > 0) {
-          console.log(`[CRON] Running LLMs for ${promptsNeedingRuns.length} prompts`)
-          const result = await runAllLLMs(brand, promptsNeedingRuns)
-          newRuns = result.llm_runs
-          errors = result.errors
+        const result = await runAllLLMs(brand, prompts)
+        newRuns = result.llm_runs
+        errors = result.errors
 
-          if (newRuns.length > 0) {
-            await createLLMRunsBatch(newRuns)
-          }
+        // Add analysis_run_id to all new runs for historical tracking
+        const runsWithAnalysisId = newRuns.map(run => ({
+          ...run,
+          analysis_run_id: analysisRun.id
+        }))
+
+        // Save new LLM runs
+        if (runsWithAnalysisId.length > 0) {
+          await createLLMRunsBatch(runsWithAnalysisId)
         }
 
-        // Get all runs for scoring
+        // Get the runs we just created for scoring
         const { data: allRuns } = await supabase
           .from('llm_runs')
           .select('*')
-          .in('prompt_id', prompts.map(p => p.id))
+          .eq('analysis_run_id', analysisRun.id)
 
         const savedRuns = allRuns || []
 
@@ -203,6 +213,12 @@ export async function GET(request: Request) {
           })
           .eq('id', analysisRun.id)
 
+        // Update last_auto_analysis_at for the brand
+        await supabase
+          .from('brands')
+          .update({ last_auto_analysis_at: new Date().toISOString() })
+          .eq('id', brand.id)
+
         console.log(`[CRON] Completed analysis for ${brand.brand_name}`)
 
         results.push({
@@ -240,12 +256,13 @@ export async function GET(request: Request) {
       }
     }
 
-    console.log('[CRON] Daily analysis run completed')
+    console.log('[CRON] Auto-analysis run completed')
 
     return NextResponse.json({
       success: true,
       timestamp: new Date().toISOString(),
-      brands_processed: brands.length,
+      brands_with_auto_analysis: allBrands.length,
+      brands_analyzed: brands.length,
       results
     })
 

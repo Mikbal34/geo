@@ -18,5 +18,5 @@ export interface CreateCompetitorInput {
 
 export interface SuggestCompetitorsInput {
   brand_id: string
-  count?: number // Default: 5
+  count?: number // Default: 10
 }
