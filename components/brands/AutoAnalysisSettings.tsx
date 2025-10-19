@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { Clock, Settings, Save } from 'lucide-react'
+import { Settings, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 interface AutoAnalysisSettingsProps {
@@ -24,22 +24,11 @@ export default function AutoAnalysisSettings({ brandId }: AutoAnalysisSettingsPr
   const [customUnit, setCustomUnit] = useState<'minutes' | 'hours' | 'days'>('hours')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
-  const [nextRun, setNextRun] = useState<string | null>(null)
-  const [currentTime, setCurrentTime] = useState(new Date())
 
   // Fetch current settings
   useEffect(() => {
     fetchSettings()
   }, [brandId])
-
-  // Update countdown timer every 10 seconds
-  useEffect(() => {
-    const timer = window.setInterval(() => {
-      setCurrentTime(new Date())
-    }, 10000)
-
-    return () => window.clearInterval(timer)
-  }, [])
 
   const fetchSettings = async () => {
     try {
@@ -54,7 +43,6 @@ export default function AutoAnalysisSettings({ brandId }: AutoAnalysisSettingsPr
 
       setEnabled(data.auto_analysis_enabled ?? true)
       setInterval(data.auto_analysis_interval ?? 1440)
-      setNextRun(data.next_analysis_at)
 
       // Check if interval is a preset value
       const isPreset = PRESET_INTERVALS.some(p => p.minutes === data.auto_analysis_interval)
@@ -112,23 +100,6 @@ export default function AutoAnalysisSettings({ brandId }: AutoAnalysisSettingsPr
     } finally {
       setSaving(false)
     }
-  }
-
-  const getNextRunTime = () => {
-    if (!enabled) return 'Disabled'
-    if (!nextRun) return 'Not scheduled'
-
-    const nextRunDate = new Date(nextRun)
-    if (nextRunDate <= currentTime) return 'Soon'
-
-    const diffMs = nextRunDate.getTime() - currentTime.getTime()
-    const diffMins = Math.floor(diffMs / (1000 * 60))
-    const diffHours = Math.floor(diffMins / 60)
-    const diffDays = Math.floor(diffHours / 24)
-
-    if (diffDays > 0) return `${diffDays}d ${diffHours % 24}h ${diffMins % 60}m`
-    if (diffHours > 0) return `${diffHours}h ${diffMins % 60}m`
-    return `${diffMins}m`
   }
 
   if (loading) {
@@ -230,15 +201,6 @@ export default function AutoAnalysisSettings({ brandId }: AutoAnalysisSettingsPr
               )}
             </div>
           )}
-
-          {/* Status */}
-          <div className="mb-4 p-3 bg-slate-50 rounded border border-slate-200">
-            <div className="flex items-center gap-2">
-              <Clock className="w-3 h-3 text-indigo-600" />
-              <span className="text-xs text-slate-600">Next Auto-Analysis:</span>
-              <span className="text-xs font-semibold text-indigo-600">{getNextRunTime()}</span>
-            </div>
-          </div>
 
           {/* Save Button */}
           <Button
