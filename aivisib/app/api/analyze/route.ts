@@ -194,11 +194,11 @@ export async function POST(request: Request) {
 
       // Batch insert all competitor scores
       console.log(`Inserting ${competitorScoreRecords.length} competitor score records`)
-      const { data, error: insertError } = await supabase.from('competitor_scores').insert(competitorScoreRecords)
+      const { error: insertError } = await supabase.from('competitor_scores').insert(competitorScoreRecords)
       if (insertError) {
         console.error('Failed to insert competitor scores:', JSON.stringify(insertError, null, 2))
       } else {
-        console.log(`Successfully inserted ${data?.length || competitorScoreRecords.length} competitor scores`)
+        console.log(`Successfully inserted ${competitorScoreRecords.length} competitor scores`)
       }
     }
 
