@@ -8,6 +8,7 @@ A Next.js web application for AI-powered brand analysis and competitive intellig
 - **Prompt Management**: Add manual prompts or generate AI suggestions
 - **Competitor Analysis**: Track competitors manually or via AI suggestions
 - **AI Analysis**: Get brand scores across 6 dimensions using GPT-4
+- **Auto-Analysis**: Configure automatic analysis with custom intervals and countdown timer
 - **Visual Dashboard**: View results with radar and bar charts
 
 ## Tech Stack
