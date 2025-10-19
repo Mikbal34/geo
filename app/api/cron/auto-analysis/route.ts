@@ -40,7 +40,15 @@ export async function GET(request: Request) {
     const now = new Date()
     const brands = allBrands.filter(brand => {
       const interval = brand.auto_analysis_interval || 1440 // default 24 hours
-      const lastRun = brand.last_auto_analysis_at ? new Date(brand.last_auto_analysis_at) : null
+
+      // FORCE UTC: Database doesn't include 'Z', so add it
+      let lastRun = null
+      if (brand.last_auto_analysis_at) {
+        const lastRunStr = brand.last_auto_analysis_at.endsWith('Z')
+          ? brand.last_auto_analysis_at
+          : brand.last_auto_analysis_at + 'Z'
+        lastRun = new Date(lastRunStr)
+      }
 
       // If never run before, run now
       if (!lastRun) {
@@ -52,9 +60,7 @@ export async function GET(request: Request) {
       const minutesSinceLastRun = (now.getTime() - lastRun.getTime()) / (1000 * 60)
       const shouldRun = minutesSinceLastRun >= interval
 
-      if (shouldRun) {
-        console.log(`[CRON] Brand ${brand.brand_name} - ${minutesSinceLastRun.toFixed(0)} minutes since last run (interval: ${interval})`)
-      }
+      console.log(`[CRON] Brand ${brand.brand_name} - ${minutesSinceLastRun.toFixed(1)} minutes since last run (interval: ${interval}, shouldRun: ${shouldRun})`)
 
       return shouldRun
     })
