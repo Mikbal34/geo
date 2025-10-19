@@ -1,0 +1,827 @@
+openapi: 3.1.0
+info:
+  title: Brand Analysis & Scoring Platform API
+  version: 1.0.0
+  description: |
+    REST API for brand analysis platform. Enables brand creation, prompt management,
+    competitor tracking, and AI-powered scoring across 5 dimensions.
+  contact:
+    name: API Support
+
+servers:
+  - url: http://localhost:3000
+    description: Local development
+  - url: https://brand-analysis.vercel.app
+    description: Production
+
+tags:
+  - name: Brands
+    description: Brand management operations
+  - name: Prompts
+    description: Prompt management and AI suggestions
+  - name: Competitors
+    description: Competitor management and AI suggestions
+  - name: Analysis
+    description: Brand scoring and analysis
+
+paths:
+  # ============================================================================
+  # BRANDS
+  # ============================================================================
+
+  /api/brands:
+    post:
+      tags: [Brands]
+      summary: Create a new brand
+      description: |
+        Creates a new brand profile (FR-001). Validates domain format (FR-002).
+        After creation, user should be redirected to prompts page (FR-003).
+      operationId: createBrand
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateBrandRequest'
+            examples:
+              valid:
+                value:
+                  brand_name: "EcoClean"
+                  domain: "ecoclean.com"
+                  region: "Global"
+      responses:
+        '201':
+          description: Brand created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrandResponse'
+              examples:
+                success:
+                  value:
+                    id: "550e8400-e29b-41d4-a716-446655440000"
+                    brand_name: "EcoClean"
+                    domain: "ecoclean.com"
+                    region: "Global"
+                    created_at: "2025-10-15T10:30:00Z"
+                    updated_at: "2025-10-15T10:30:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Domain already exists
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                duplicate:
+                  value:
+                    error: "A brand with this domain already exists"
+                    code: "DUPLICATE_DOMAIN"
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/brands/{brandId}:
+    get:
+      tags: [Brands]
+      summary: Get brand details with related data
+      description: Fetches brand with all prompts, competitors, and latest score
+      operationId: getBrand
+      parameters:
+        - $ref: '#/components/parameters/BrandId'
+      responses:
+        '200':
+          description: Brand details retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BrandDetailResponse'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ============================================================================
+  # PROMPTS
+  # ============================================================================
+
+  /api/prompts:
+    post:
+      tags: [Prompts]
+      summary: Add a prompt manually
+      description: |
+        Creates a new prompt for a brand (FR-007).
+        Prompts are linked to brand via brand_id (FR-005).
+      operationId: createPrompt
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePromptRequest'
+            examples:
+              manual:
+                value:
+                  brand_id: "550e8400-e29b-41d4-a716-446655440000"
+                  prompt_text: "What makes our brand unique in the sustainability market?"
+      responses:
+        '201':
+          description: Prompt created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PromptResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: Brand not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/prompts/suggest:
+    post:
+      tags: [Prompts]
+      summary: Generate AI-suggested prompts
+      description: |
+        Generates 3-5 AI-suggested prompts relevant to brand analysis (FR-008).
+        Uses LLM to create domain-appropriate evaluation questions.
+      operationId: suggestPrompts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuggestPromptsRequest'
+            examples:
+              default:
+                value:
+                  brand_id: "550e8400-e29b-41d4-a716-446655440000"
+                  count: 5
+      responses:
+        '200':
+          description: Prompts generated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestPromptsResponse'
+              examples:
+                success:
+                  value:
+                    prompts:
+                      - id: "660e8400-e29b-41d4-a716-446655440001"
+                        brand_id: "550e8400-e29b-41d4-a716-446655440000"
+                        prompt_text: "How does EcoClean's messaging align with current sustainability trends?"
+                        is_ai_generated: true
+                        created_at: "2025-10-15T10:35:00Z"
+                      - id: "660e8400-e29b-41d4-a716-446655440002"
+                        brand_id: "550e8400-e29b-41d4-a716-446655440000"
+                        prompt_text: "What emotional response does the EcoClean brand evoke?"
+                        is_ai_generated: true
+                        created_at: "2025-10-15T10:35:01Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/prompts/{brandId}:
+    get:
+      tags: [Prompts]
+      summary: List all prompts for a brand
+      description: Retrieves all prompts associated with a brand, ordered by creation date
+      operationId: listPrompts
+      parameters:
+        - $ref: '#/components/parameters/BrandId'
+      responses:
+        '200':
+          description: Prompts retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  prompts:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PromptResponse'
+
+  # ============================================================================
+  # COMPETITORS
+  # ============================================================================
+
+  /api/competitors:
+    post:
+      tags: [Competitors]
+      summary: Add a competitor manually
+      description: |
+        Creates a new competitor for a brand (FR-010).
+        Prevents duplicate competitors per brand (FR-011).
+        Linked to brand via brand_id (FR-006).
+      operationId: createCompetitor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCompetitorRequest'
+            examples:
+              manual:
+                value:
+                  brand_id: "550e8400-e29b-41d4-a716-446655440000"
+                  competitor_name: "GreenWash"
+                  competitor_domain: "greenwash.com"
+                  region: "North America"
+      responses:
+        '201':
+          description: Competitor created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CompetitorResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: Competitor already exists for this brand
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                duplicate:
+                  value:
+                    error: "This competitor already exists for this brand"
+                    code: "DUPLICATE_COMPETITOR"
+
+  /api/competitors/suggest:
+    post:
+      tags: [Competitors]
+      summary: Generate AI-suggested competitors
+      description: |
+        Generates 3-5 AI-suggested competitors based on brand domain and industry (FR-009).
+      operationId: suggestCompetitors
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SuggestCompetitorsRequest'
+            examples:
+              default:
+                value:
+                  brand_id: "550e8400-e29b-41d4-a716-446655440000"
+                  count: 5
+      responses:
+        '200':
+          description: Competitors suggested successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuggestCompetitorsResponse'
+              examples:
+                success:
+                  value:
+                    competitors:
+                      - id: "770e8400-e29b-41d4-a716-446655440001"
+                        brand_id: "550e8400-e29b-41d4-a716-446655440000"
+                        competitor_name: "GreenWash"
+                        competitor_domain: "greenwash.com"
+                        region: "Global"
+                        is_ai_generated: true
+                        created_at: "2025-10-15T10:40:00Z"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /api/competitors/{brandId}:
+    get:
+      tags: [Competitors]
+      summary: List all competitors for a brand
+      description: Retrieves all competitors associated with a brand
+      operationId: listCompetitors
+      parameters:
+        - $ref: '#/components/parameters/BrandId'
+      responses:
+        '200':
+          description: Competitors retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  competitors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/CompetitorResponse'
+
+  # ============================================================================
+  # ANALYSIS
+  # ============================================================================
+
+  /api/analysis:
+    post:
+      tags: [Analysis]
+      summary: Run brand scoring analysis
+      description: |
+        Triggers LLM-based brand analysis (FR-012, FR-013).
+        Requires brand to have at least one prompt (FR-023).
+        Evaluates across 5 dimensions (FR-014).
+        Validates scores 0-100 (FR-015).
+        Stores scores and reasoning (FR-016, FR-017).
+      operationId: runAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RunAnalysisRequest'
+            examples:
+              basic:
+                value:
+                  brand_id: "550e8400-e29b-41d4-a716-446655440000"
+      responses:
+        '200':
+          description: Analysis completed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+              examples:
+                success:
+                  value:
+                    id: "880e8400-e29b-41d4-a716-446655440000"
+                    brand_id: "550e8400-e29b-41d4-a716-446655440000"
+                    relevance: 82
+                    clarity: 76
+                    consistency: 71
+                    creativity: 85
+                    emotional_impact: 88
+                    reasoning_json:
+                      Relevance:
+                        score: 82
+                        reason: "Strong focus on sustainability resonates with target audience"
+                      Clarity:
+                        score: 76
+                        reason: "Mostly clear messaging but lacks consistent tagline"
+                      Consistency:
+                        score: 71
+                        reason: "Brand tone varies between marketing channels"
+                      Creativity:
+                        score: 85
+                        reason: "Innovative use of storytelling in campaigns"
+                      Emotional_Impact:
+                        score: 88
+                        reason: "Strong emotional connection through eco-friendly narrative"
+                    model_used: "gpt-4-turbo-preview"
+                    analysis_duration_ms: 8430
+                    created_at: "2025-10-15T10:45:00Z"
+        '400':
+          description: Validation error (e.g., no prompts)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                no_prompts:
+                  value:
+                    error: "Brand must have at least one prompt before analysis"
+                    code: "MISSING_PROMPTS"
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/analysis/mock:
+    get:
+      tags: [Analysis]
+      summary: Get mock analysis results (testing)
+      description: |
+        Returns static mock LLM response for testing without API calls (FR-019).
+        Used during development to avoid LLM API costs.
+      operationId: getMockAnalysis
+      responses:
+        '200':
+          description: Mock analysis data
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+
+  /api/analysis/{brandId}/latest:
+    get:
+      tags: [Analysis]
+      summary: Get latest analysis for a brand
+      description: Retrieves the most recent score record for a brand
+      operationId: getLatestAnalysis
+      parameters:
+        - $ref: '#/components/parameters/BrandId'
+      responses:
+        '200':
+          description: Latest analysis retrieved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AnalysisResponse'
+        '404':
+          description: No analysis found for brand
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+# ==============================================================================
+# COMPONENTS
+# ==============================================================================
+
+components:
+  parameters:
+    BrandId:
+      name: brandId
+      in: path
+      required: true
+      description: Unique brand identifier (UUID)
+      schema:
+        type: string
+        format: uuid
+      example: "550e8400-e29b-41d4-a716-446655440000"
+
+  schemas:
+    # -------------------------------------------------------------------------
+    # Brand Schemas
+    # -------------------------------------------------------------------------
+    CreateBrandRequest:
+      type: object
+      required:
+        - brand_name
+        - domain
+        - region
+      properties:
+        brand_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: Brand or company name
+          example: "EcoClean"
+        domain:
+          type: string
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$'
+          description: Website domain (e.g., example.com)
+          example: "ecoclean.com"
+        region:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Geographic region
+          example: "Global"
+
+    BrandResponse:
+      type: object
+      required:
+        - id
+        - brand_name
+        - domain
+        - region
+        - created_at
+        - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        brand_name:
+          type: string
+        domain:
+          type: string
+        region:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BrandDetailResponse:
+      allOf:
+        - $ref: '#/components/schemas/BrandResponse'
+        - type: object
+          properties:
+            prompts:
+              type: array
+              items:
+                $ref: '#/components/schemas/PromptResponse'
+            competitors:
+              type: array
+              items:
+                $ref: '#/components/schemas/CompetitorResponse'
+            latest_score:
+              $ref: '#/components/schemas/AnalysisResponse'
+              nullable: true
+
+    # -------------------------------------------------------------------------
+    # Prompt Schemas
+    # -------------------------------------------------------------------------
+    CreatePromptRequest:
+      type: object
+      required:
+        - brand_id
+        - prompt_text
+      properties:
+        brand_id:
+          type: string
+          format: uuid
+        prompt_text:
+          type: string
+          minLength: 10
+          maxLength: 2000
+          description: The prompt content
+          example: "What makes our brand unique?"
+
+    PromptResponse:
+      type: object
+      required:
+        - id
+        - brand_id
+        - prompt_text
+        - is_ai_generated
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        brand_id:
+          type: string
+          format: uuid
+        prompt_text:
+          type: string
+        is_ai_generated:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    SuggestPromptsRequest:
+      type: object
+      required:
+        - brand_id
+      properties:
+        brand_id:
+          type: string
+          format: uuid
+        count:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 5
+          description: Number of prompts to generate
+
+    SuggestPromptsResponse:
+      type: object
+      required:
+        - prompts
+      properties:
+        prompts:
+          type: array
+          items:
+            $ref: '#/components/schemas/PromptResponse'
+          minItems: 1
+          maxItems: 10
+
+    # -------------------------------------------------------------------------
+    # Competitor Schemas
+    # -------------------------------------------------------------------------
+    CreateCompetitorRequest:
+      type: object
+      required:
+        - brand_id
+        - competitor_name
+        - competitor_domain
+        - region
+      properties:
+        brand_id:
+          type: string
+          format: uuid
+        competitor_name:
+          type: string
+          minLength: 1
+          maxLength: 255
+          example: "GreenWash"
+        competitor_domain:
+          type: string
+          pattern: '^[a-zA-Z0-9][a-zA-Z0-9-]{0,61}[a-zA-Z0-9]?\.[a-zA-Z]{2,}$'
+          example: "greenwash.com"
+        region:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: "North America"
+
+    CompetitorResponse:
+      type: object
+      required:
+        - id
+        - brand_id
+        - competitor_name
+        - competitor_domain
+        - region
+        - is_ai_generated
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        brand_id:
+          type: string
+          format: uuid
+        competitor_name:
+          type: string
+        competitor_domain:
+          type: string
+        region:
+          type: string
+        is_ai_generated:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+
+    SuggestCompetitorsRequest:
+      type: object
+      required:
+        - brand_id
+      properties:
+        brand_id:
+          type: string
+          format: uuid
+        count:
+          type: integer
+          minimum: 1
+          maximum: 10
+          default: 5
+
+    SuggestCompetitorsResponse:
+      type: object
+      required:
+        - competitors
+      properties:
+        competitors:
+          type: array
+          items:
+            $ref: '#/components/schemas/CompetitorResponse'
+
+    # -------------------------------------------------------------------------
+    # Analysis Schemas
+    # -------------------------------------------------------------------------
+    RunAnalysisRequest:
+      type: object
+      required:
+        - brand_id
+      properties:
+        brand_id:
+          type: string
+          format: uuid
+
+    ScoreDimension:
+      type: object
+      required:
+        - score
+        - reason
+      properties:
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+        reason:
+          type: string
+          minLength: 10
+          description: Explanation for the score
+
+    ScoreReasoning:
+      type: object
+      required:
+        - Relevance
+        - Clarity
+        - Consistency
+        - Creativity
+        - Emotional_Impact
+      properties:
+        Relevance:
+          $ref: '#/components/schemas/ScoreDimension'
+        Clarity:
+          $ref: '#/components/schemas/ScoreDimension'
+        Consistency:
+          $ref: '#/components/schemas/ScoreDimension'
+        Creativity:
+          $ref: '#/components/schemas/ScoreDimension'
+        Emotional_Impact:
+          $ref: '#/components/schemas/ScoreDimension'
+
+    AnalysisResponse:
+      type: object
+      required:
+        - id
+        - brand_id
+        - relevance
+        - clarity
+        - consistency
+        - creativity
+        - emotional_impact
+        - reasoning_json
+        - model_used
+        - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        brand_id:
+          type: string
+          format: uuid
+        relevance:
+          type: integer
+          minimum: 0
+          maximum: 100
+        clarity:
+          type: integer
+          minimum: 0
+          maximum: 100
+        consistency:
+          type: integer
+          minimum: 0
+          maximum: 100
+        creativity:
+          type: integer
+          minimum: 0
+          maximum: 100
+        emotional_impact:
+          type: integer
+          minimum: 0
+          maximum: 100
+        reasoning_json:
+          $ref: '#/components/schemas/ScoreReasoning'
+        model_used:
+          type: string
+          description: LLM model identifier
+          example: "gpt-4-turbo-preview"
+        analysis_duration_ms:
+          type: integer
+          nullable: true
+          description: Time taken for analysis in milliseconds
+        created_at:
+          type: string
+          format: date-time
+
+    # -------------------------------------------------------------------------
+    # Error Schemas
+    # -------------------------------------------------------------------------
+    ErrorResponse:
+      type: object
+      required:
+        - error
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+        code:
+          type: string
+          description: Machine-readable error code
+          example: "VALIDATION_ERROR"
+        details:
+          type: object
+          description: Additional error context
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            validation:
+              value:
+                error: "Validation failed"
+                code: "VALIDATION_ERROR"
+                details:
+                  field: "domain"
+                  message: "Invalid domain format"
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            not_found:
+              value:
+                error: "Brand not found"
+                code: "NOT_FOUND"
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          examples:
+            server_error:
+              value:
+                error: "An unexpected error occurred"
+                code: "INTERNAL_ERROR"
