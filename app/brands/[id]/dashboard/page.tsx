@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Navigation from '@/components/layout/Navigation'
 import { ScoreLLM, ScoreOverall } from '@/types/llm'
-import { BarChart3, ExternalLink, Filter, TrendingUp, ChevronDown, Clock, Calendar } from 'lucide-react'
+import { BarChart3, ExternalLink, Filter, TrendingUp, ChevronDown, Calendar } from 'lucide-react'
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts'
 
 type LLMFilter = 'all' | 'chatgpt' | 'gemini' | 'perplexity'
@@ -51,95 +51,11 @@ export default function DashboardPage() {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistory | null>(null)
-  const [timeUntilNextRun, setTimeUntilNextRun] = useState<string>('')
-  const [autoAnalysisSettings, setAutoAnalysisSettings] = useState<{
-    auto_analysis_enabled: boolean
-    auto_analysis_interval: number
-    next_analysis_at: string | null
-  } | null>(null)
 
   useEffect(() => {
     fetchScores()
     fetchAnalysisHistory()
-    fetchAutoAnalysisSettings()
-
-    // Refetch auto-analysis settings every 5 seconds to keep in sync with Settings page
-    const settingsInterval = setInterval(fetchAutoAnalysisSettings, 5000)
-
-    // Refetch when page becomes visible (e.g., when returning from Settings page)
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchAutoAnalysisSettings()
-      }
-    }
-    document.addEventListener('visibilitychange', handleVisibilityChange)
-
-    return () => {
-      clearInterval(settingsInterval)
-      document.removeEventListener('visibilitychange', handleVisibilityChange)
-    }
   }, [brandId])
-
-  // Fetch auto-analysis settings
-  const fetchAutoAnalysisSettings = async () => {
-    try {
-      const res = await fetch(`/api/brands/${brandId}/auto-analysis-settings`, {
-        cache: 'no-store',
-        headers: {
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          'Pragma': 'no-cache'
-        }
-      })
-      const data = await res.json()
-      console.log('[DASHBOARD] Fetched auto-analysis settings:', data)
-      setAutoAnalysisSettings(data)
-    } catch (error) {
-      console.error('Error fetching auto-analysis settings:', error)
-    }
-  }
-
-  // Calculate countdown - SIMPLE!
-  useEffect(() => {
-    if (!autoAnalysisSettings) return
-
-    const calculateTimeUntilNextRun = () => {
-      if (!autoAnalysisSettings.auto_analysis_enabled) {
-        setTimeUntilNextRun('Disabled')
-        return
-      }
-
-      if (!autoAnalysisSettings.next_analysis_at) {
-        setTimeUntilNextRun('Not scheduled')
-        return
-      }
-
-      const now = new Date()
-      const nextRun = new Date(autoAnalysisSettings.next_analysis_at)
-
-      if (nextRun <= now) {
-        setTimeUntilNextRun('Soon')
-        return
-      }
-
-      const diffMs = nextRun.getTime() - now.getTime()
-      const diffMins = Math.floor(diffMs / (1000 * 60))
-      const hours = Math.floor(diffMins / 60)
-      const minutes = diffMins % 60
-      const days = Math.floor(hours / 24)
-
-      if (days > 0) {
-        setTimeUntilNextRun(`${days}d ${hours % 24}h ${minutes}m`)
-      } else if (hours > 0) {
-        setTimeUntilNextRun(`${hours}h ${minutes}m`)
-      } else {
-        setTimeUntilNextRun(`${minutes}m`)
-      }
-    }
-
-    calculateTimeUntilNextRun()
-    const interval = setInterval(calculateTimeUntilNextRun, 10000)
-    return () => clearInterval(interval)
-  }, [autoAnalysisSettings])
 
   useEffect(() => {
     fetchCompetitorScores()
@@ -479,19 +395,8 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              {/* LLM Filter + Next Analysis Info */}
-              <div className="flex items-center justify-between gap-3">
-                {/* Next Scheduled Analysis */}
-                <div className="flex items-center gap-2 px-3 py-2 bg-gradient-to-r from-indigo-50 to-blue-50 border border-indigo-200 rounded-lg">
-                  <div className="flex items-center gap-1.5">
-                    <Clock className="w-4 h-4 text-indigo-600" />
-                    <span className="text-xs font-medium text-slate-700">Next Auto-Analysis:</span>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-sm font-bold text-indigo-900">{timeUntilNextRun}</span>
-                  </div>
-                </div>
-
+              {/* LLM Filter */}
+              <div className="flex items-center justify-end gap-3">
                 {/* LLM Filter Dropdown */}
                 <div className="relative" ref={dropdownRef}>
                   <button
