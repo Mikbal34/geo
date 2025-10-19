@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(.specify/scripts/bash/create-new-feature.sh:*)",
+      "Bash(.specify/scripts/bash/setup-plan.sh:*)",
+      "Bash(.specify/scripts/bash/update-agent-context.sh:*)",
+      "Bash(.specify/scripts/bash/check-prerequisites.sh:*)",
+      "Bash(npx create-next-app:*)",
+      "Bash(npm init:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tailwindcss init:*)",
+      "Bash(npm run build:*)",
+      "Bash(npm run dev:*)",
+      "Bash(pkill:*)",
+      "Bash(npx supabase db pull:*)",
+      "Bash(find:*)",
+      "Bash(for file in app/brands/[id]/results/page.tsx app/brands/[id]/analyze/page.tsx app/brands/[id]/competitors/page.tsx)",
+      "Bash(do sed -i '' 's/params\\.brandId/params.id/g' \"$file\")",
+      "Bash(done)",
+      "Bash(cat:*)",
+      "Bash(npx supabase:*)",
+      "Bash(curl:*)",
+      "Bash(if [ -f .env.local ])",
+      "Bash(then grep -i \"GEMINI\" .env.local)",
+      "Bash(else echo \".env.local dosyası yok\")",
+      "Bash(fi)",
+      "Bash(openssl rand -base64 32)",
+      "Read(//Users/ikbalkoc/Desktop/aivisib/**)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

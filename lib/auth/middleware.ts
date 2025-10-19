@@ -33,7 +33,7 @@ export function withAuth(
   }
 }
 
-export function getUserFromRequest(req: NextRequest): JWTPayload | null {
+export function getUserFromRequest(req: Request | NextRequest): JWTPayload | null {
   const authHeader = req.headers.get('authorization')
   const token = getTokenFromHeader(authHeader)
 

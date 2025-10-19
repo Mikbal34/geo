@@ -3,6 +3,7 @@ export interface Brand {
   brand_name: string
   domain: string
   region: string
+  user_id: string
   created_at: string
   updated_at: string
 }
