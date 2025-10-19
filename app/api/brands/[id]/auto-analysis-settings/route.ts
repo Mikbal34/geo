@@ -31,6 +31,11 @@ export async function GET(
       const lastRun = new Date(lastRunStr)
       const nextRun = new Date(lastRun.getTime() + (brand.auto_analysis_interval || 1440) * 60 * 1000)
       next_analysis_at = nextRun.toISOString()
+    } else if (brand.auto_analysis_enabled) {
+      // If never run before but auto-analysis is enabled, schedule from now
+      const now = new Date()
+      const nextRun = new Date(now.getTime() + (brand.auto_analysis_interval || 1440) * 60 * 1000)
+      next_analysis_at = nextRun.toISOString()
     }
 
     const responseData = {
