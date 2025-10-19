@@ -22,7 +22,7 @@ export async function GET(request: Request) {
       }
     }
 
-    console.log('[CRON] Starting auto-analysis run...')
+    console.log('[CRON v2 - TIMEZONE FIX] Starting auto-analysis run...')
 
     const supabase = await createClient()
 
@@ -266,10 +266,11 @@ export async function GET(request: Request) {
       }
     }
 
-    console.log('[CRON] Auto-analysis run completed')
+    console.log('[CRON v2 - TIMEZONE FIX] Auto-analysis run completed')
 
     return NextResponse.json({
       success: true,
+      version: 'v2-timezone-fix',
       timestamp: new Date().toISOString(),
       brands_with_auto_analysis: allBrands.length,
       brands_analyzed: brands.length,
