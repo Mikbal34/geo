@@ -42,6 +42,7 @@ export interface ScoreLLM {
   avg_position_raw: number | null
   sentiment_pct: number
   mentions_raw: number
+  analysis_run_id?: string
   created_at: string
 }
 

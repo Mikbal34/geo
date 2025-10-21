@@ -57,7 +57,7 @@ export function exportDashboardToExcel(data: ExportData) {
     ['Visibility', overallScore ? `${Math.round(overallScore.visibility_pct)}%` : '-'],
     ['Sentiment', overallScore ? `${Math.round(overallScore.sentiment_pct)}%` : '-'],
     ['Avg Position', overallScore?.avg_position_raw ? overallScore.avg_position_raw.toFixed(1) : '-'],
-    ['Mentions', overallScore?.mentions_raw || 0]
+    ['Mentions', overallScore?.mentions_raw_total || 0]
   ]
 
   const ws1 = XLSX.utils.aoa_to_sheet(summaryData)
@@ -123,7 +123,7 @@ export function exportDashboardToExcel(data: ExportData) {
       visibility: overallScore?.visibility_pct || 0,
       sentiment: overallScore?.sentiment_pct || 0,
       position: overallScore?.avg_position_raw || null,
-      mentions: overallScore?.mentions_raw || 0,
+      mentions: overallScore?.mentions_raw_total || 0,
       isBrand: true
     },
     ...(competitorScores || []).map((comp: any) => ({
