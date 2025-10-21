@@ -38,7 +38,7 @@ function groupByDay(runs: any[]): any[] {
       visibility_pct: calculateAverage(dayRuns, 'visibility_pct'),
       sentiment_pct: calculateAverage(dayRuns, 'sentiment_pct'),
       avg_position_raw: calculateAverage(dayRuns, 'avg_position_raw', true), // can be null
-      mentions_raw_total: Math.round(calculateAverage(dayRuns, 'mentions_raw_total')),
+      mentions_raw_total: Math.round(calculateAverage(dayRuns, 'mentions_raw_total') || 0),
       created_at: dayKey + 'T12:00:00Z', // Set to noon UTC
       status: 'completed',
       llm: dayRuns[0].llm,
@@ -85,7 +85,7 @@ function groupByWeek(dailyRuns: any[]): any[] {
       visibility_pct: calculateAverage(weekRuns, 'visibility_pct'),
       sentiment_pct: calculateAverage(weekRuns, 'sentiment_pct'),
       avg_position_raw: calculateAverage(weekRuns, 'avg_position_raw', true),
-      mentions_raw_total: Math.round(calculateAverage(weekRuns, 'mentions_raw_total')),
+      mentions_raw_total: Math.round(calculateAverage(weekRuns, 'mentions_raw_total') || 0),
       created_at: weekRuns[0].created_at, // Use latest day in week
       status: 'completed',
       llm: weekRuns[0].llm,
