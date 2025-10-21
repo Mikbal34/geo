@@ -1,11 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Navigation from '@/components/layout/Navigation'
 import { LLMRun, LLMProvider } from '@/types/llm'
 import { Prompt } from '@/types/prompt'
-import { MessageSquare, Sparkles, ExternalLink, TrendingUp, TrendingDown, Minus } from 'lucide-react'
+import { MessageSquare, Sparkles, ExternalLink, TrendingUp, TrendingDown, Minus, Calendar, Filter, ChevronDown } from 'lucide-react'
 
 export default function AnalysisResultsPage() {
   const params = useParams()
@@ -15,14 +15,58 @@ export default function AnalysisResultsPage() {
   const [loading, setLoading] = useState(true)
   const [selectedLLM, setSelectedLLM] = useState<LLMProvider | 'all'>('all')
 
+  // Analysis run filtering
+  const [availableRuns, setAvailableRuns] = useState<any[]>([])
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [isRunDropdownOpen, setIsRunDropdownOpen] = useState(false)
+  const [isLLMDropdownOpen, setIsLLMDropdownOpen] = useState(false)
+  const runDropdownRef = useRef<HTMLDivElement>(null)
+  const llmDropdownRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
-    fetchData()
+    fetchAvailableRuns()
   }, [brandId])
+
+  useEffect(() => {
+    if (selectedRunId) {
+      fetchData()
+    }
+  }, [brandId, selectedRunId])
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (runDropdownRef.current && !runDropdownRef.current.contains(event.target as Node)) {
+        setIsRunDropdownOpen(false)
+      }
+      if (llmDropdownRef.current && !llmDropdownRef.current.contains(event.target as Node)) {
+        setIsLLMDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
+
+  const fetchAvailableRuns = async () => {
+    try {
+      const res = await fetch(`/api/analysis-runs/${brandId}`)
+      const data = await res.json()
+      if (data.success) {
+        setAvailableRuns(data.runs || [])
+        // Auto-select latest run
+        if (data.latest_run) {
+          setSelectedRunId(data.latest_run.id)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching analysis runs:', error)
+    }
+  }
 
   const fetchData = async () => {
     try {
+      const runParam = selectedRunId ? `?analysis_run_id=${selectedRunId}` : ''
       const [runsRes, promptsRes] = await Promise.all([
-        fetch(`/api/llm-runs/${brandId}`),
+        fetch(`/api/llm-runs/${brandId}${runParam}`),
         fetch(`/api/prompts/${brandId}`),
       ])
 
@@ -36,6 +80,17 @@ export default function AnalysisResultsPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const getRunLabel = (run: any) => {
+    const date = new Date(run.created_at).toLocaleString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    })
+    const type = run.run_type === 'manual' ? '(Manual)' : '(Auto)'
+    return `${date} ${type}`
   }
 
   const filteredRuns = selectedLLM === 'all'
@@ -96,48 +151,89 @@ export default function AnalysisResultsPage() {
               </div>
             </div>
 
-            {/* LLM Filter */}
-            <div className="flex gap-2">
-              <button
-                onClick={() => setSelectedLLM('all')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  selectedLLM === 'all'
-                    ? 'bg-slate-900 text-white shadow-lg'
-                    : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-                }`}
-              >
-                All LLMs ({llmRuns.length})
-              </button>
-              <button
-                onClick={() => setSelectedLLM('chatgpt')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  selectedLLM === 'chatgpt'
-                    ? 'bg-slate-900 text-white shadow-lg'
-                    : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-                }`}
-              >
-                ChatGPT ({llmRuns.filter(r => r.llm === 'chatgpt').length})
-              </button>
-              <button
-                onClick={() => setSelectedLLM('gemini')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  selectedLLM === 'gemini'
-                    ? 'bg-slate-900 text-white shadow-lg'
-                    : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-                }`}
-              >
-                Gemini ({llmRuns.filter(r => r.llm === 'gemini').length})
-              </button>
-              <button
-                onClick={() => setSelectedLLM('perplexity')}
-                className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                  selectedLLM === 'perplexity'
-                    ? 'bg-slate-900 text-white shadow-lg'
-                    : 'bg-white text-slate-600 hover:bg-slate-50 border border-slate-200'
-                }`}
-              >
-                Perplexity ({llmRuns.filter(r => r.llm === 'perplexity').length})
-              </button>
+            {/* Filters */}
+            <div className="flex gap-3">
+              {/* Analysis Run Dropdown */}
+              <div className="relative" ref={runDropdownRef}>
+                <button
+                  onClick={() => setIsRunDropdownOpen(!isRunDropdownOpen)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <Calendar className="w-4 h-4" />
+                  {selectedRunId
+                    ? getRunLabel(availableRuns.find(r => r.id === selectedRunId) || {})
+                    : 'Select Analysis'
+                  }
+                  <ChevronDown className={`w-4 h-4 transition-transform ${isRunDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isRunDropdownOpen && (
+                  <div className="absolute left-0 mt-1 w-64 bg-white border border-slate-200 rounded-lg shadow-lg z-10 max-h-80 overflow-y-auto">
+                    {availableRuns.map((run, index) => (
+                      <button
+                        key={run.id}
+                        onClick={() => { setSelectedRunId(run.id); setIsRunDropdownOpen(false) }}
+                        className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${
+                          index === 0 ? 'rounded-t-lg' : ''
+                        } ${index === availableRuns.length - 1 ? 'rounded-b-lg' : ''} ${
+                          selectedRunId === run.id ? 'bg-slate-100 font-medium' : ''
+                        }`}
+                      >
+                        {getRunLabel(run)}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* LLM Filter Dropdown */}
+              <div className="relative" ref={llmDropdownRef}>
+                <button
+                  onClick={() => setIsLLMDropdownOpen(!isLLMDropdownOpen)}
+                  className="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  <Filter className="w-4 h-4" />
+                  {selectedLLM === 'all' ? 'All LLMs' : selectedLLM === 'chatgpt' ? 'ChatGPT' : selectedLLM === 'gemini' ? 'Gemini' : 'Perplexity'}
+                  <ChevronDown className={`w-4 h-4 transition-transform ${isLLMDropdownOpen ? 'rotate-180' : ''}`} />
+                </button>
+
+                {isLLMDropdownOpen && (
+                  <div className="absolute left-0 mt-1 w-40 bg-white border border-slate-200 rounded-lg shadow-lg z-10">
+                    <button
+                      onClick={() => { setSelectedLLM('all'); setIsLLMDropdownOpen(false) }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 first:rounded-t-lg ${
+                        selectedLLM === 'all' ? 'bg-slate-100 font-medium' : ''
+                      }`}
+                    >
+                      All LLMs
+                    </button>
+                    <button
+                      onClick={() => { setSelectedLLM('chatgpt'); setIsLLMDropdownOpen(false) }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${
+                        selectedLLM === 'chatgpt' ? 'bg-slate-100 font-medium' : ''
+                      }`}
+                    >
+                      ChatGPT
+                    </button>
+                    <button
+                      onClick={() => { setSelectedLLM('gemini'); setIsLLMDropdownOpen(false) }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 ${
+                        selectedLLM === 'gemini' ? 'bg-slate-100 font-medium' : ''
+                      }`}
+                    >
+                      Gemini
+                    </button>
+                    <button
+                      onClick={() => { setSelectedLLM('perplexity'); setIsLLMDropdownOpen(false) }}
+                      className={`w-full text-left px-4 py-2 text-sm hover:bg-slate-50 last:rounded-b-lg ${
+                        selectedLLM === 'perplexity' ? 'bg-slate-100 font-medium' : ''
+                      }`}
+                    >
+                      Perplexity
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
