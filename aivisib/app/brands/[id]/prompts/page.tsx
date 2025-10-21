@@ -101,7 +101,7 @@ export default function PromptsPage() {
                 <p className="text-slate-600">Add your first prompt above to get started!</p>
               </div>
             ) : (
-              <PromptList prompts={prompts} />
+              <PromptList prompts={prompts} onDelete={fetchPrompts} />
             )}
           </div>
 
