@@ -2,6 +2,7 @@ import { Brand } from '@/types/brand'
 import { Prompt } from '@/types/prompt'
 import { LLMRun, LLMProvider, ScoringConfig, ScoringOutput, LLMScoreResult } from '@/types/llm'
 import { Competitor } from '@/types/competitor'
+import { CompetitorAnalysisMap } from './llm-runner'
 
 const DEFAULT_CONFIG: ScoringConfig = {
   domain_variants: [],
@@ -16,7 +17,8 @@ export function computeScores(
   prompts: Prompt[],
   llm_runs: LLMRun[],
   config: Partial<ScoringConfig> = {},
-  competitors: Competitor[] = []
+  competitors: Competitor[] = [],
+  competitor_analysis: CompetitorAnalysisMap = {}
 ): ScoringOutput & { competitor_scores?: any[] } {
   const finalConfig: ScoringConfig = {
     ...DEFAULT_CONFIG,
@@ -38,21 +40,22 @@ export function computeScores(
 
   // Compute competitor scores if competitors are provided
   const competitor_scores = competitors.map(competitor => {
-    const competitorConfig: ScoringConfig = {
-      ...finalConfig,
-      domain_variants: generateDomainVariants(competitor.competitor_domain),
-    }
-
     const competitor_per_llm: Record<LLMProvider, LLMScoreResult> = {} as any
 
-    // Compute scores for each LLM
+    // Compute scores for each LLM using analyzer results
     for (const llm of llms) {
       const llmRuns = llm_runs.filter(r => r.llm === llm)
-      competitor_per_llm[llm] = computeLLMScores(llmRuns, prompts, competitorConfig, competitor.competitor_name)
+      competitor_per_llm[llm] = computeLLMScoresFromAnalysis(
+        llmRuns,
+        prompts,
+        competitor.competitor_name,
+        brand.id,
+        competitor_analysis
+      )
     }
 
     // Compute overall scores
-    const competitor_overall = computeOverallScores(competitor_per_llm, competitorConfig)
+    const competitor_overall = computeOverallScores(competitor_per_llm, finalConfig)
 
     return {
       competitor_id: competitor.id,
@@ -103,12 +106,12 @@ function computeLLMScores(
   })
   const visibility_pct = (visiblePrompts.size / prompts.length) * 100
 
-  // 2. Average Position (brand text'te kaçıncı sırada bahsedildi)
+  // 2. Average Position (analyzer'dan gelen position değeri)
   const positions: number[] = []
   llm_runs.forEach(run => {
-    const position = getBrandPositionInText(run.response_text, brandName, config.domain_variants)
-    if (position !== null) {
-      positions.push(position)
+    // Use position from analyzer (stored in llm_runs.position)
+    if (run.position !== null && run.position !== undefined) {
+      positions.push(run.position)
     }
   })
 
@@ -129,12 +132,12 @@ function computeLLMScores(
   const sentiment_pct =
     total > 0 ? clamp(((positiveCount - negativeCount) / Math.max(1, total)) * 100, 0, 100) : 50
 
-  // 4. Mentions (SADECE brand name'in response_text'te kaç kez geçtiği)
+  // 4. Mentions (analyzer'dan gelen mentions_count değeri)
   let mentions_raw = 0
 
   llm_runs.forEach(run => {
-    // Sadece brand name mentions - URL/domain saymıyoruz
-    mentions_raw += countBrandMentions(run.response_text, brandName)
+    // Use mentions_count from analyzer (stored in llm_runs.mentions_count)
+    mentions_raw += run.mentions_count || 0
   })
 
   return {
@@ -239,91 +242,90 @@ function isDomainMentioned(run: LLMRun, variants: string[]): boolean {
 }
 
 /**
- * Brand'in response text'inde kaçıncı sırada bahsedildiğini bulur
- * Örnek: "1. Turkcell 2. Vodafone" → Turkcell için 1 döner
+ * Compute LLM scores for a competitor using analyzer results
+ * This is used instead of computeLLMScores for competitors
  */
-function getBrandPositionInText(text: string, brandName: string, domainVariants: string[]): number | null {
-  const lowerText = text.toLowerCase()
-  const lowerBrand = brandName.toLowerCase()
-
-  console.log(`[Position Debug] Analyzing text for brand: ${brandName}`)
-
-  // Method 1: Numbered lists (1., 2., 3. veya 1) 2) 3))
-  const numberedListRegex = /(\d+)[\.)]\s*([^\n.]+)/g
-  let match
-  let position = 1
-
-  while ((match = numberedListRegex.exec(text)) !== null) {
-    const listNumber = parseInt(match[1])
-    const itemText = match[2].toLowerCase()
-
-    console.log(`[Position Debug] Found list item ${listNumber}: "${match[2].substring(0, 50)}..."`)
-
-    // Check if brand name is in this list item
-    if (itemText.includes(lowerBrand)) {
-      console.log(`[Position Debug] ✓ Brand found at position ${listNumber}`)
-      return listNumber
-    }
-
-    // Check if domain is in this list item
-    if (domainVariants.some(v => itemText.includes(canonicalizeDomain(v)))) {
-      console.log(`[Position Debug] ✓ Domain found at position ${listNumber}`)
-      return listNumber
+function computeLLMScoresFromAnalysis(
+  llm_runs: LLMRun[],
+  prompts: Prompt[],
+  competitorName: string,
+  brandId: string,
+  competitor_analysis: CompetitorAnalysisMap
+): LLMScoreResult {
+  if (llm_runs.length === 0) {
+    return {
+      visibility_pct: 0,
+      avg_position_raw: null,
+      sentiment_pct: 50,
+      mentions_raw: 0,
     }
   }
 
-  // Method 2: Brand ilk bahsediliş sırası (paragraph-based)
-  // Text'i cümlelere veya paragraflara böl, brand'in kaçıncı paragrafta geçtiğini bul
-  const paragraphs = text.split(/\n\n+/)
-  for (let i = 0; i < paragraphs.length; i++) {
-    const paraLower = paragraphs[i].toLowerCase()
+  // Extract analyzer results for this competitor across all LLM runs
+  const visiblePrompts = new Set<string>()
+  const positions: number[] = []
+  let totalMentions = 0
+  let positiveCount = 0
+  let negativeCount = 0
+  let neutralCount = 0
 
-    // Her paragrafta brand name veya domain var mı?
-    if (paraLower.includes(lowerBrand) || domainVariants.some(v => paraLower.includes(canonicalizeDomain(v)))) {
-      console.log(`[Position Debug] ✓ Brand found in paragraph ${i + 1}`)
-      return i + 1
+  llm_runs.forEach(run => {
+    // Generate key to find analyzer results for this LLM run
+    const runKey = `${brandId}-${run.prompt_id}-${run.llm}`
+    const analysisResults = competitor_analysis[runKey]
+
+    if (!analysisResults) {
+      console.warn(`[Compute Scores] No analyzer results found for run: ${runKey}`)
+      return
     }
-  }
 
-  // Method 3: Sentence-based (daha granular)
-  const sentences = text.split(/[.!?]+/)
-  for (let i = 0; i < sentences.length; i++) {
-    const sentLower = sentences[i].toLowerCase()
+    // Find this competitor's analysis in the results
+    const competitorAnalysis = analysisResults.find(
+      r => r.brand_name.toLowerCase() === competitorName.toLowerCase()
+    )
 
-    if (sentLower.includes(lowerBrand) || domainVariants.some(v => sentLower.includes(canonicalizeDomain(v)))) {
-      console.log(`[Position Debug] ✓ Brand found in sentence ${i + 1}`)
-      return i + 1
+    if (!competitorAnalysis) {
+      console.warn(`[Compute Scores] No analysis found for competitor: ${competitorName} in run: ${runKey}`)
+      return
     }
-  }
 
-  console.log(`[Position Debug] ✗ Brand not found in text`)
-  return null
-}
+    // Extract metrics from analyzer
+    if (competitorAnalysis.mentioned) {
+      visiblePrompts.add(run.prompt_id)
+    }
 
-function countBrandMentions(text: string, brandName: string): number {
-  const lowerText = text.toLowerCase()
-  const lowerBrandName = brandName.toLowerCase()
+    if (competitorAnalysis.position !== null) {
+      positions.push(competitorAnalysis.position)
+    }
 
-  // Use word boundaries to avoid partial matches (e.g. "adidas" not matching "adidasssss")
-  const regex = new RegExp(`\\b${lowerBrandName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'gi')
-  const matches = lowerText.match(regex)
+    totalMentions += competitorAnalysis.mentions_count
 
-  return matches ? matches.length : 0
-}
-
-function countDomainMentions(text: string, variants: string[]): number {
-  const lowerText = text.toLowerCase()
-  let count = 0
-
-  variants.forEach(variant => {
-    const canonical = canonicalizeDomain(variant)
-    const regex = new RegExp(canonical.replace(/\./g, '\\.'), 'gi')
-    const matches = lowerText.match(regex)
-    if (matches) count += matches.length
+    // Count sentiment
+    if (competitorAnalysis.sentiment === 'positive') positiveCount++
+    else if (competitorAnalysis.sentiment === 'negative') negativeCount++
+    else neutralCount++
   })
 
-  return count
+  // Calculate aggregated metrics
+  const visibility_pct = (visiblePrompts.size / prompts.length) * 100
+  const avg_position_raw = positions.length > 0
+    ? positions.reduce((a, b) => a + b, 0) / positions.length
+    : null
+
+  const total = positiveCount + negativeCount + neutralCount
+  const sentiment_pct =
+    total > 0 ? clamp(((positiveCount - negativeCount) / Math.max(1, total)) * 100, 0, 100) : 50
+
+  return {
+    visibility_pct: Number(visibility_pct.toFixed(2)),
+    avg_position_raw: avg_position_raw !== null ? Number(avg_position_raw.toFixed(2)) : null,
+    sentiment_pct: Number(sentiment_pct.toFixed(2)),
+    mentions_raw: totalMentions,
+  }
 }
+
+// Helper functions for getBrandPositionInText, countBrandMentions, countDomainMentions
+// removed - now using GPT-4o-mini analyzer instead of regex-based detection
 
 function weightedMean(values: number[], weights: number[]): number {
   if (values.length === 0) return 0

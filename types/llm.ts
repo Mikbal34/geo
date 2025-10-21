@@ -17,6 +17,8 @@ export interface LLMRun {
   response_text: string
   sources: LLMSource[]
   sentiment: SentimentType | null
+  position: number | null
+  mentions_count: number
   created_at: string
 }
 
@@ -27,6 +29,8 @@ export interface CreateLLMRunInput {
   response_text: string
   sources?: LLMSource[]
   sentiment?: SentimentType
+  position?: number | null
+  mentions_count?: number
 }
 
 export interface ScoreLLM {

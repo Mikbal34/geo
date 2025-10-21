@@ -69,8 +69,9 @@ export async function POST(request: Request) {
     let newRuns: any[] = []
     let errors: any[] = []
 
-    const result = await runAllLLMs(brand, prompts)
+    const result = await runAllLLMs(brand, prompts, competitors)
     newRuns = result.llm_runs
+    const competitorAnalysis = result.competitor_analysis
     errors = result.errors
 
     // Add analysis_run_id to all new runs for historical tracking
@@ -92,9 +93,9 @@ export async function POST(request: Request) {
 
     const savedRuns = allRuns || []
 
-    // Step 3: Compute scores (including competitor scores)
+    // Step 3: Compute scores (including competitor scores with analyzer results)
     console.log(`Computing scores with ${competitors.length} competitors`)
-    const scoringOutput = computeScores(brand, prompts, savedRuns, {}, competitors)
+    const scoringOutput = computeScores(brand, prompts, savedRuns, {}, competitors, competitorAnalysis)
     console.log(`Competitor scores computed:`, scoringOutput.competitor_scores?.length || 0)
 
     // Step 4: Save scores to database

@@ -116,8 +116,12 @@ export async function GET(request: Request) {
         let newRuns: any[] = []
         let errors: any[] = []
 
-        const result = await runAllLLMs(brand, prompts)
+        // Get competitors (for both analyzer and score computation)
+        const competitors = await getCompetitorsByBrandId(brand.id)
+
+        const result = await runAllLLMs(brand, prompts, competitors)
         newRuns = result.llm_runs
+        const competitorAnalysis = result.competitor_analysis
         errors = result.errors
 
         // Add analysis_run_id to all new runs for historical tracking
@@ -139,11 +143,8 @@ export async function GET(request: Request) {
 
         const savedRuns = allRuns || []
 
-        // Get competitors
-        const competitors = await getCompetitorsByBrandId(brand.id)
-
-        // Compute scores
-        const scoringOutput = computeScores(brand, prompts, savedRuns, {}, competitors)
+        // Compute scores (with analyzer results for competitors)
+        const scoringOutput = computeScores(brand, prompts, savedRuns, {}, competitors, competitorAnalysis)
 
         // Save scores
         const llmScores = [
