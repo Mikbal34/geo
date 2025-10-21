@@ -64,7 +64,13 @@ export async function GET(request: Request) {
       const minutesSinceLastRun = (now.getTime() - lastRun.getTime()) / (1000 * 60)
       const shouldRun = minutesSinceLastRun >= interval
 
-      console.log(`[CRON] Brand ${brand.brand_name} - ${minutesSinceLastRun.toFixed(1)} minutes since last run (interval: ${interval}, shouldRun: ${shouldRun})`)
+      console.log(`[CRON] Brand ${brand.brand_name}:`)
+      console.log(`  - Last run (raw): ${brand.last_auto_analysis_at}`)
+      console.log(`  - Last run (parsed): ${lastRun.toISOString()}`)
+      console.log(`  - Now: ${now.toISOString()}`)
+      console.log(`  - Minutes since last run: ${minutesSinceLastRun.toFixed(1)}`)
+      console.log(`  - Interval: ${interval} minutes`)
+      console.log(`  - Should run: ${shouldRun}`)
 
       return shouldRun
     })
@@ -141,9 +147,9 @@ export async function GET(request: Request) {
 
         // Save scores
         const llmScores = [
-          { brand_id: brand.id, llm: 'chatgpt' as const, ...scoringOutput.per_llm.chatgpt },
-          { brand_id: brand.id, llm: 'gemini' as const, ...scoringOutput.per_llm.gemini },
-          { brand_id: brand.id, llm: 'perplexity' as const, ...scoringOutput.per_llm.perplexity },
+          { brand_id: brand.id, llm: 'chatgpt' as const, ...scoringOutput.per_llm.chatgpt, analysis_run_id: analysisRun.id },
+          { brand_id: brand.id, llm: 'gemini' as const, ...scoringOutput.per_llm.gemini, analysis_run_id: analysisRun.id },
+          { brand_id: brand.id, llm: 'perplexity' as const, ...scoringOutput.per_llm.perplexity, analysis_run_id: analysisRun.id },
         ]
 
         await createScoresLLMBatch(llmScores)
@@ -151,15 +157,12 @@ export async function GET(request: Request) {
         const overallScore = await createScoreOverall({
           brand_id: brand.id,
           ...scoringOutput.overall,
+          analysis_run_id: analysisRun.id,
         })
 
         // Save competitor scores
         if (scoringOutput.competitor_scores && scoringOutput.competitor_scores.length > 0) {
-          await supabase
-            .from('competitor_scores')
-            .delete()
-            .eq('brand_id', brand.id)
-
+          // Note: We no longer delete old scores because we track historical data with analysis_run_id
           const competitorScoreRecords = scoringOutput.competitor_scores.flatMap((compScore) => {
             const llmScores = [
               {
@@ -170,6 +173,7 @@ export async function GET(request: Request) {
                 avg_position_raw: compScore.per_llm.chatgpt.avg_position_raw,
                 sentiment_pct: compScore.per_llm.chatgpt.sentiment_pct,
                 mentions_raw_total: compScore.per_llm.chatgpt.mentions_raw,
+                analysis_run_id: analysisRun.id,
                 created_at: new Date().toISOString(),
               },
               {
@@ -180,6 +184,7 @@ export async function GET(request: Request) {
                 avg_position_raw: compScore.per_llm.gemini.avg_position_raw,
                 sentiment_pct: compScore.per_llm.gemini.sentiment_pct,
                 mentions_raw_total: compScore.per_llm.gemini.mentions_raw,
+                analysis_run_id: analysisRun.id,
                 created_at: new Date().toISOString(),
               },
               {
@@ -190,6 +195,7 @@ export async function GET(request: Request) {
                 avg_position_raw: compScore.per_llm.perplexity.avg_position_raw,
                 sentiment_pct: compScore.per_llm.perplexity.sentiment_pct,
                 mentions_raw_total: compScore.per_llm.perplexity.mentions_raw,
+                analysis_run_id: analysisRun.id,
                 created_at: new Date().toISOString(),
               },
             ]
@@ -202,6 +208,7 @@ export async function GET(request: Request) {
               avg_position_raw: compScore.overall.avg_position_raw,
               sentiment_pct: compScore.overall.sentiment_pct,
               mentions_raw_total: compScore.overall.mentions_raw_total,
+              analysis_run_id: analysisRun.id,
               created_at: new Date().toISOString(),
             }
 

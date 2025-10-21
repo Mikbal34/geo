@@ -99,9 +99,9 @@ export async function POST(request: Request) {
 
     // Step 4: Save scores to database
     const llmScores = [
-      { brand_id: brandId, llm: 'chatgpt' as const, ...scoringOutput.per_llm.chatgpt },
-      { brand_id: brandId, llm: 'gemini' as const, ...scoringOutput.per_llm.gemini },
-      { brand_id: brandId, llm: 'perplexity' as const, ...scoringOutput.per_llm.perplexity },
+      { brand_id: brandId, llm: 'chatgpt' as const, ...scoringOutput.per_llm.chatgpt, analysis_run_id: analysisRun?.id },
+      { brand_id: brandId, llm: 'gemini' as const, ...scoringOutput.per_llm.gemini, analysis_run_id: analysisRun?.id },
+      { brand_id: brandId, llm: 'perplexity' as const, ...scoringOutput.per_llm.perplexity, analysis_run_id: analysisRun?.id },
     ]
 
     await createScoresLLMBatch(llmScores)
@@ -109,18 +109,14 @@ export async function POST(request: Request) {
     const overallScore = await createScoreOverall({
       brand_id: brandId,
       ...scoringOutput.overall,
+      analysis_run_id: analysisRun?.id,
     })
 
     // Step 5: Save competitor scores if available
     if (scoringOutput.competitor_scores && scoringOutput.competitor_scores.length > 0) {
       const { supabase } = await import('@/lib/supabase/client')
 
-      // Delete old competitor scores for this brand
-      await supabase
-        .from('competitor_scores')
-        .delete()
-        .eq('brand_id', brandId)
-
+      // Note: We no longer delete old scores because we track historical data with analysis_run_id
       const competitorScoreRecords = scoringOutput.competitor_scores.flatMap((compScore) => {
         // Save per-LLM scores
         const llmScores = [
@@ -132,6 +128,7 @@ export async function POST(request: Request) {
             avg_position_raw: compScore.per_llm.chatgpt.avg_position_raw,
             sentiment_pct: compScore.per_llm.chatgpt.sentiment_pct,
             mentions_raw_total: compScore.per_llm.chatgpt.mentions_raw,
+            analysis_run_id: analysisRun?.id,
             created_at: new Date().toISOString(),
           },
           {
@@ -142,6 +139,7 @@ export async function POST(request: Request) {
             avg_position_raw: compScore.per_llm.gemini.avg_position_raw,
             sentiment_pct: compScore.per_llm.gemini.sentiment_pct,
             mentions_raw_total: compScore.per_llm.gemini.mentions_raw,
+            analysis_run_id: analysisRun?.id,
             created_at: new Date().toISOString(),
           },
           {
@@ -152,6 +150,7 @@ export async function POST(request: Request) {
             avg_position_raw: compScore.per_llm.perplexity.avg_position_raw,
             sentiment_pct: compScore.per_llm.perplexity.sentiment_pct,
             mentions_raw_total: compScore.per_llm.perplexity.mentions_raw,
+            analysis_run_id: analysisRun?.id,
             created_at: new Date().toISOString(),
           },
         ]
@@ -165,6 +164,7 @@ export async function POST(request: Request) {
           avg_position_raw: compScore.overall.avg_position_raw,
           sentiment_pct: compScore.overall.sentiment_pct,
           mentions_raw_total: compScore.overall.mentions_raw_total,
+          analysis_run_id: analysisRun?.id,
           created_at: new Date().toISOString(),
         }
 

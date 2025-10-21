@@ -47,6 +47,7 @@ export interface CreateScoreLLMInput {
   avg_position_raw: number | null
   sentiment_pct: number
   mentions_raw: number
+  analysis_run_id?: string
 }
 
 export interface ScoreOverall {
@@ -65,6 +66,7 @@ export interface CreateScoreOverallInput {
   avg_position_raw: number | null
   sentiment_pct: number
   mentions_raw_total: number
+  analysis_run_id?: string
 }
 
 // Scoring Configuration

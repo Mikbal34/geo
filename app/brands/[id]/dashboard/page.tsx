@@ -8,6 +8,7 @@ import { BarChart3, ExternalLink, Filter, TrendingUp, ChevronDown, Calendar } fr
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts'
 
 type LLMFilter = 'all' | 'chatgpt' | 'gemini' | 'perplexity'
+type TimeFilter = 'latest' | '24h' | '7d' | '30d' | 'custom' | 'run'
 
 interface CompetitorScore {
   competitor_name: string
@@ -52,6 +53,13 @@ export default function DashboardPage() {
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistory | null>(null)
 
+  // Time filtering state (for Historical Trends only, ranking always shows latest)
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>('latest')
+  const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false)
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
+  const [availableRuns, setAvailableRuns] = useState<any[]>([])
+  const timeFilterRef = useRef<HTMLDivElement>(null)
+
   useEffect(() => {
     fetchScores()
     fetchAnalysisHistory()
@@ -66,10 +74,17 @@ export default function DashboardPage() {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false)
       }
+      if (timeFilterRef.current && !timeFilterRef.current.contains(event.target as Node)) {
+        setIsTimeFilterOpen(false)
+      }
     }
     document.addEventListener('mousedown', handleClickOutside)
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
+
+  useEffect(() => {
+    fetchAvailableRuns()
+  }, [brandId, timeFilter, selectedLLM])
 
   const fetchScores = async () => {
     try {
@@ -88,6 +103,7 @@ export default function DashboardPage() {
     setLoadingCompetitors(true)
     try {
       const llmParam = selectedLLM === 'all' ? 'overall' : selectedLLM
+      // Ranking always shows latest - no run_id filter
       const res = await fetch(`/api/competitors/${brandId}/scores?llm=${llmParam}`)
       const data = await res.json()
       console.log('Competitor scores API response:', data)
@@ -97,6 +113,51 @@ export default function DashboardPage() {
       console.error('Error fetching competitor scores:', error)
     } finally {
       setLoadingCompetitors(false)
+    }
+  }
+
+  const fetchAvailableRuns = async () => {
+    try {
+      const params = new URLSearchParams()
+
+      if (timeFilter !== 'latest') {
+        params.append('filter', timeFilter)
+      }
+
+      if (selectedLLM !== 'all') {
+        params.append('llm', selectedLLM)
+      }
+
+      const queryString = params.toString() ? `?${params.toString()}` : ''
+      const res = await fetch(`/api/analysis-runs/${brandId}${queryString}`)
+      const data = await res.json()
+
+      if (data.success) {
+        setAvailableRuns(data.runs || [])
+        // Auto-select latest run if none selected
+        if (!selectedRunId && data.latest_run) {
+          setSelectedRunId(data.latest_run.id)
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching analysis runs:', error)
+    }
+  }
+
+  const handleTimeFilterChange = (filter: TimeFilter) => {
+    setTimeFilter(filter)
+    setIsTimeFilterOpen(false)
+  }
+
+  const getTimeFilterLabel = () => {
+    switch (timeFilter) {
+      case 'latest': return 'Latest Analysis'
+      case '24h': return 'Last 24 Hours'
+      case '7d': return 'Last 7 Days'
+      case '30d': return 'Last 30 Days'
+      case 'custom': return 'Custom Range'
+      case 'run': return 'Select Run'
+      default: return 'Latest Analysis'
     }
   }
 
@@ -243,13 +304,13 @@ export default function DashboardPage() {
     'Mentions': score.mentions_raw || 0
   }))
 
-  // Visibility Trend Data - Use historical data if available
-  const trendData = analysisHistory && analysisHistory.trend_data.length > 0
-    ? analysisHistory.trend_data.map(item => ({
-        date: item.date,
-        Visibility: item.visibility,
-        Sentiment: item.sentiment
-      }))
+  // Visibility Trend Data - Use filtered runs from time filter
+  const trendData = availableRuns.length > 0
+    ? availableRuns.map(run => ({
+        date: new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        Visibility: Math.round(run.visibility_pct || 0),
+        Sentiment: Math.round(run.sentiment_pct || 0)
+      })).reverse() // Reverse to show oldest to newest
     : llmScores.length > 0 ? (
         selectedLLM === 'all' && overallScore ? [
           {
@@ -395,8 +456,57 @@ export default function DashboardPage() {
             </div>
           ) : (
             <div className="space-y-6">
-              {/* LLM Filter */}
+              {/* Filters */}
               <div className="flex items-center justify-end gap-3">
+                {/* Time Filter Dropdown (only affects Historical Trends) */}
+                <div className="relative" ref={timeFilterRef}>
+                  <button
+                    onClick={() => setIsTimeFilterOpen(!isTimeFilterOpen)}
+                    className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <Calendar className="w-4 h-4" />
+                    {getTimeFilterLabel()}
+                    <ChevronDown className={`w-4 h-4 transition-transform ${isTimeFilterOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isTimeFilterOpen && (
+                    <div className="absolute right-0 mt-1 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-10">
+                      <button
+                        onClick={() => handleTimeFilterChange('latest')}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 first:rounded-t-lg ${
+                          timeFilter === 'latest' ? 'bg-slate-100 font-medium' : ''
+                        }`}
+                      >
+                        Latest Analysis
+                      </button>
+                      <button
+                        onClick={() => handleTimeFilterChange('24h')}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+                          timeFilter === '24h' ? 'bg-slate-100 font-medium' : ''
+                        }`}
+                      >
+                        Last 24 Hours
+                      </button>
+                      <button
+                        onClick={() => handleTimeFilterChange('7d')}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 ${
+                          timeFilter === '7d' ? 'bg-slate-100 font-medium' : ''
+                        }`}
+                      >
+                        Last 7 Days
+                      </button>
+                      <button
+                        onClick={() => handleTimeFilterChange('30d')}
+                        className={`w-full text-left px-3 py-2 text-sm hover:bg-slate-50 last:rounded-b-lg ${
+                          timeFilter === '30d' ? 'bg-slate-100 font-medium' : ''
+                        }`}
+                      >
+                        Last 30 Days
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {/* LLM Filter Dropdown */}
                 <div className="relative" ref={dropdownRef}>
                   <button
@@ -493,14 +603,14 @@ export default function DashboardPage() {
                       <TrendingUp className="w-4 h-4 text-indigo-600" />
                       Historical Trends
                     </h2>
-                    {analysisHistory && analysisHistory.total_runs > 0 && (
+                    {availableRuns.length > 0 && (
                       <span className="text-[9px] text-slate-500">
-                        {analysisHistory.total_runs} runs (30 days)
+                        {availableRuns.length} runs ({getTimeFilterLabel()})
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-600 mb-3">
-                    {analysisHistory && analysisHistory.trend_data.length > 0
+                    {availableRuns.length > 0
                       ? 'Visibility & Sentiment over time'
                       : 'Run multiple analyses to see trends'}
                   </p>
@@ -562,7 +672,7 @@ export default function DashboardPage() {
                 <div className="bg-white rounded-md shadow-sm border border-slate-200 p-3">
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-xs font-semibold text-slate-900">Industry Ranking</h2>
-                    <p className="text-[9px] text-slate-500">Brands with highest visibility</p>
+                    <p className="text-[9px] text-slate-500">Latest analysis</p>
                   </div>
 
                   {/* Vertical Cards - Scrollable */}
@@ -632,46 +742,6 @@ export default function DashboardPage() {
                   )}
                 </div>
               </div>
-
-              {/* LLM Performance Table - Compact */}
-              {selectedLLM === 'all' && llmTableData.length > 0 && (
-                <div className="bg-white rounded-md border border-slate-200 overflow-hidden">
-                  <div className="px-3 py-2 border-b border-slate-200 bg-slate-50">
-                    <h2 className="text-xs font-semibold text-slate-900">Platform Performance</h2>
-                  </div>
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-[10px]">
-                      <thead>
-                        <tr className="bg-slate-50 border-b border-slate-200">
-                          <th className="text-left py-1.5 px-3 font-medium text-slate-600 uppercase text-[9px]">Platform</th>
-                          <th className="text-center py-1.5 px-3 font-medium text-slate-600 uppercase text-[9px]">Visibility</th>
-                          <th className="text-center py-1.5 px-3 font-medium text-slate-600 uppercase text-[9px]">Sentiment</th>
-                          <th className="text-center py-1.5 px-3 font-medium text-slate-600 uppercase text-[9px]">Position</th>
-                          <th className="text-center py-1.5 px-3 font-medium text-slate-600 uppercase text-[9px]">Mentions</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {llmTableData.map((row) => (
-                          <tr key={row.llmKey} className="hover:bg-slate-50 transition-colors">
-                            <td className="py-2 px-3 font-semibold text-slate-900">{row.llm}</td>
-                            <td className="py-2 px-3 text-center">
-                              <span className="font-semibold text-slate-900">{row.visibility}%</span>
-                            </td>
-                            <td className="py-2 px-3 text-center">
-                              <span className="font-semibold text-slate-900">{row.sentiment}%</span>
-                            </td>
-                            <td className="py-2 px-3 text-center">
-                              <span className="font-semibold text-slate-900">{row.position.toFixed(1)}</span>
-                            </td>
-                            <td className="py-2 px-3 text-center font-semibold text-slate-900">{row.mentions}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
             </div>
           )}
         </div>
