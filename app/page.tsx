@@ -85,33 +85,20 @@ export default function Home() {
           initial="hidden"
           animate="visible"
         >
-          {/* Badge */}
-          <motion.div variants={itemVariants} className="flex justify-center mb-8">
-            <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-xl border border-white/20">
-              <Sparkles className="w-4 h-4 text-slate-300" />
-              <span className="text-sm font-semibold text-slate-200">
-                Powered by GPT-4 Turbo
-              </span>
-            </div>
-          </motion.div>
-
           {/* Hero Title */}
           <motion.div variants={itemVariants} className="text-center mb-12">
             <h1 className="text-6xl md:text-8xl font-black text-white mb-6 leading-[1.1] tracking-tight">
-              Decode Your
-              <span className="block mt-2 text-slate-300">
-                Brand DNA
-              </span>
+              ai visibility
             </h1>
             <p className="text-xl md:text-2xl text-slate-400 max-w-3xl mx-auto leading-relaxed font-light">
-              AI-powered insights that transform your brand strategy. Analyze 6 critical dimensions in under 15 seconds.
+              AI-powered insights that transform your brand strategy. Analyze 5 critical dimensions in under 15 seconds.
             </p>
           </motion.div>
 
           {/* CTA Button */}
           <motion.div variants={itemVariants} className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-20">
             <Link href="/register">
-              <Button size="xl" className="group">
+              <Button size="xl" className="group bg-slate-100 text-slate-900 hover:bg-white hover:text-slate-950">
                 Get Started Free
                 <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
@@ -134,7 +121,7 @@ export default function Home() {
               },
               {
                 icon: BarChart3,
-                title: '6 Dimensions',
+                title: '5 Dimensions',
                 description: 'Comprehensive analysis across all critical brand metrics',
                 gradient: 'from-slate-600 to-slate-500',
               },
@@ -175,7 +162,7 @@ export default function Home() {
               {[
                 { value: '100%', label: 'AI Accuracy', icon: Target, color: 'from-slate-300 to-slate-400' },
                 { value: '<15s', label: 'Analysis Time', icon: Zap, color: 'from-slate-300 to-slate-400' },
-                { value: '6', label: 'Dimensions', icon: TrendingUp, color: 'from-slate-300 to-slate-400' },
+                { value: '5', label: 'Dimensions', icon: TrendingUp, color: 'from-slate-300 to-slate-400' },
               ].map((stat, i) => (
                 <div key={i} className="text-center">
                   <div className="flex items-center justify-center gap-3 mb-2">

@@ -67,6 +67,15 @@ export async function createPrompt(input: CreatePromptInput) {
   return data as Prompt
 }
 
+export async function deletePrompt(promptId: string) {
+  const { error } = await supabase
+    .from('prompts')
+    .delete()
+    .eq('id', promptId)
+
+  if (error) throw error
+}
+
 export async function getPromptsByBrandId(brandId: string) {
   const { data, error } = await supabase
     .from('prompts')
@@ -109,6 +118,15 @@ export async function getCompetitorsByBrandId(brandId: string) {
 
   if (error) throw error
   return data as Competitor[]
+}
+
+export async function deleteCompetitor(competitorId: string) {
+  const { error } = await supabase
+    .from('competitors')
+    .delete()
+    .eq('id', competitorId)
+
+  if (error) throw error
 }
 
 export async function checkDuplicateCompetitor(

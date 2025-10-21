@@ -12,6 +12,7 @@ export async function GET(
     const { searchParams } = new URL(request.url)
 
     const analysisRunId = searchParams.get('analysis_run_id')
+    const analysisRunIds = searchParams.get('analysis_run_ids') // Comma-separated IDs
 
     // Build query with optional analysis_run_id filter
     let query = supabase
@@ -22,6 +23,12 @@ export async function GET(
     // Filter by specific analysis run if provided
     if (analysisRunId) {
       query = query.eq('analysis_run_id', analysisRunId)
+    } else if (analysisRunIds) {
+      // Support multiple analysis run IDs (comma-separated)
+      const ids = analysisRunIds.split(',').filter(id => id.trim())
+      if (ids.length > 0) {
+        query = query.in('analysis_run_id', ids)
+      }
     }
 
     const { data, error } = await query.order('created_at', { ascending: false })

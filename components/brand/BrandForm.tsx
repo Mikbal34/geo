@@ -59,7 +59,7 @@ export default function BrandForm() {
     <form onSubmit={handleSubmit} className="space-y-6">
       <div className="space-y-6">
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
+          <label className="block text-sm font-semibold text-white mb-2">
             Brand Name *
           </label>
           <input
@@ -67,14 +67,14 @@ export default function BrandForm() {
             required
             value={formData.brand_name}
             onChange={(e) => setFormData({ ...formData, brand_name: e.target.value })}
-            className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-slate-900 focus:ring-2 focus:ring-slate-200 transition-all outline-none"
+            className="w-full px-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 transition-all outline-none"
             placeholder="e.g., EcoClean"
           />
-          <p className="mt-1.5 text-sm text-slate-500">Your brand's official name</p>
+          <p className="mt-1.5 text-sm text-slate-400">Your brand's official name</p>
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
+          <label className="block text-sm font-semibold text-white mb-2">
             Domain *
           </label>
           <div className="relative">
@@ -88,51 +88,51 @@ export default function BrandForm() {
               required
               value={formData.domain}
               onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-              className="w-full pl-12 pr-4 py-3 border-2 border-slate-200 rounded-xl focus:border-slate-900 focus:ring-2 focus:ring-slate-200 transition-all outline-none"
+              className="w-full pl-12 pr-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 transition-all outline-none"
               placeholder="ecoclean.com"
             />
           </div>
-          <p className="mt-1.5 text-sm text-slate-500">Your brand's website domain</p>
+          <p className="mt-1.5 text-sm text-slate-400">Your brand's website domain</p>
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">
+          <label className="block text-sm font-semibold text-white mb-2">
             Target Region & Language *
           </label>
           <select
             required
             value={formData.region}
             onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-            className="w-full px-4 py-3 border-2 border-slate-200 rounded-xl focus:border-slate-900 focus:ring-2 focus:ring-slate-200 transition-all outline-none bg-white"
+            className="w-full px-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] text-white focus:border-slate-600 focus:ring-1 focus:ring-slate-600 transition-all outline-none"
           >
             <option value="">Select a region</option>
-            <option value="Global">🌍 Global (English)</option>
-            <option value="Turkey">🇹🇷 Turkey (Turkish)</option>
-            <option value="France">🇫🇷 France (French)</option>
-            <option value="Germany">🇩🇪 Germany (German)</option>
-            <option value="Spain">🇪🇸 Spain (Spanish)</option>
-            <option value="Italy">🇮🇹 Italy (Italian)</option>
-            <option value="United Kingdom">🇬🇧 United Kingdom (English)</option>
-            <option value="United States">🇺🇸 United States (English)</option>
-            <option value="Japan">🇯🇵 Japan (Japanese)</option>
-            <option value="China">🇨🇳 China (Chinese)</option>
-            <option value="Brazil">🇧🇷 Brazil (Portuguese)</option>
-            <option value="Mexico">🇲🇽 Mexico (Spanish)</option>
-            <option value="India">🇮🇳 India (English)</option>
-            <option value="Russia">🇷🇺 Russia (Russian)</option>
-            <option value="South Korea">🇰🇷 South Korea (Korean)</option>
+            <option value="Global">Global (English)</option>
+            <option value="Turkey">Turkey (Turkish)</option>
+            <option value="France">France (French)</option>
+            <option value="Germany">Germany (German)</option>
+            <option value="Spain">Spain (Spanish)</option>
+            <option value="Italy">Italy (Italian)</option>
+            <option value="United Kingdom">United Kingdom (English)</option>
+            <option value="United States">United States (English)</option>
+            <option value="Japan">Japan (Japanese)</option>
+            <option value="China">China (Chinese)</option>
+            <option value="Brazil">Brazil (Portuguese)</option>
+            <option value="Mexico">Mexico (Spanish)</option>
+            <option value="India">India (English)</option>
+            <option value="Russia">Russia (Russian)</option>
+            <option value="South Korea">South Korea (Korean)</option>
           </select>
-          <p className="mt-1.5 text-sm text-slate-500">Analysis language and target market</p>
+          <p className="mt-1.5 text-sm text-slate-400">Analysis language and target market</p>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-50 border-2 border-red-200 rounded-xl p-4">
+        <div className="bg-red-900/20 border border-red-800 p-4">
           <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-sm text-red-800">{error}</p>
+            <p className="text-sm text-red-400">{error}</p>
           </div>
         </div>
       )}
@@ -140,7 +140,7 @@ export default function BrandForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-slate-900 text-white py-4 rounded-xl font-semibold hover:bg-slate-800 hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-2 group"
+        className="w-full bg-white text-black py-4 font-semibold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-2 group"
       >
         {loading ? (
           <>

@@ -14,6 +14,7 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.75.0",
     "@tailwindcss/postcss": "^4.1.14",
+    "@types/react-datepicker": "^6.2.0",
     "bcryptjs": "^3.0.2",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
@@ -23,9 +24,11 @@
     "next": "^14.2.18",
     "openai": "^6.3.0",
     "react": "^18.3.1",
+    "react-datepicker": "^8.8.0",
     "react-dom": "^18.3.1",
     "recharts": "^3.3.0",
     "tailwind-merge": "^3.3.1",
+    "xlsx": "^0.18.5",
     "zod": "^4.1.12"
   },
   "devDependencies": {

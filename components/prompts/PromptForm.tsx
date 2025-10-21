@@ -30,14 +30,14 @@ export default function PromptForm({ brandId, onAdded }: { brandId: string, onAd
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Add a prompt..."
-        className="flex-1 px-3 py-2 border border-slate-200 rounded-lg focus:border-slate-900 focus:ring-2 focus:ring-slate-200 outline-none"
+        className="flex-1 px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 outline-none"
         minLength={10}
         required
       />
       <button
         type="submit"
         disabled={loading}
-        className="bg-slate-900 text-white px-4 py-2 rounded-lg hover:bg-slate-800 disabled:opacity-50"
+        className="bg-white text-black px-4 py-3 hover:bg-slate-100 disabled:opacity-50 transition-colors"
       >
         Add
       </button>

@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { Sparkles, Check, X } from 'lucide-react'
-import { Button } from '@/components/ui/button'
 
 export default function SuggestPromptsButton({ brandId, onSuggested }: { brandId: string, onSuggested: () => void }) {
   const [loading, setLoading] = useState(false)
@@ -77,22 +76,21 @@ export default function SuggestPromptsButton({ brandId, onSuggested }: { brandId
 
   return (
     <>
-      <Button
+      <button
         onClick={handleSuggest}
         disabled={loading}
-        size="lg"
-        className="w-full bg-slate-900 hover:bg-slate-800"
+        className="w-full flex items-center justify-center gap-2 bg-white text-black px-6 py-3 hover:bg-slate-100 disabled:opacity-50 transition-colors"
       >
         <Sparkles className="w-5 h-5" />
         {loading ? 'Generating AI Suggestions...' : 'AI Suggest Prompts'}
-      </Button>
+      </button>
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[80vh] overflow-hidden border border-slate-200">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-[#171717] shadow-2xl max-w-3xl w-full max-h-[80vh] overflow-hidden border border-slate-800">
             {/* Header */}
-            <div className="bg-slate-900 p-6">
+            <div className="bg-[#0a0a0a] p-6 border-b border-slate-800">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
                   <Sparkles className="w-6 h-6 text-white" />
@@ -105,7 +103,7 @@ export default function SuggestPromptsButton({ brandId, onSuggested }: { brandId
                   <X className="w-6 h-6" />
                 </button>
               </div>
-              <p className="text-slate-200 mt-2">Select the prompts you want to add</p>
+              <p className="text-slate-400 mt-2">Select the prompts you want to add</p>
             </div>
 
             {/* Content */}
@@ -115,23 +113,23 @@ export default function SuggestPromptsButton({ brandId, onSuggested }: { brandId
                   <div
                     key={index}
                     onClick={() => toggleSelection(index)}
-                    className={`p-4 rounded-xl border-2 cursor-pointer transition-all ${
+                    className={`p-4 border-2 cursor-pointer transition-all ${
                       selected.has(index)
-                        ? 'border-slate-900 bg-slate-50'
-                        : 'border-slate-200 hover:border-slate-300'
+                        ? 'border-white bg-[#0a0a0a]'
+                        : 'border-slate-700 hover:border-slate-600'
                     }`}
                   >
                     <div className="flex items-start gap-3">
                       <div
-                        className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+                        className={`w-6 h-6 flex items-center justify-center flex-shrink-0 transition-colors ${
                           selected.has(index)
-                            ? 'bg-slate-900 text-white'
-                            : 'bg-slate-200 text-slate-400'
+                            ? 'bg-white text-black'
+                            : 'bg-slate-800 text-slate-400'
                         }`}
                       >
                         {selected.has(index) && <Check className="w-4 h-4" />}
                       </div>
-                      <p className="text-slate-700 leading-relaxed">{suggestion}</p>
+                      <p className="text-white leading-relaxed">{suggestion}</p>
                     </div>
                   </div>
                 ))}
@@ -139,26 +137,26 @@ export default function SuggestPromptsButton({ brandId, onSuggested }: { brandId
             </div>
 
             {/* Footer */}
-            <div className="border-t border-slate-200 p-6 bg-slate-50">
+            <div className="border-t border-slate-800 p-6 bg-[#0a0a0a]">
               <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-600">
+                <p className="text-sm text-slate-400">
                   {selected.size} of {suggestions.length} selected
                 </p>
                 <div className="flex gap-3">
-                  <Button
-                    variant="outline"
+                  <button
                     onClick={handleCloseModal}
                     disabled={adding}
+                    className="px-4 py-2 border border-slate-700 text-white hover:bg-[#171717] disabled:opacity-50 transition-colors"
                   >
                     Cancel
-                  </Button>
-                  <Button
+                  </button>
+                  <button
                     onClick={handleAdd}
                     disabled={selected.size === 0 || adding}
-                    className="bg-slate-900 hover:bg-slate-800"
+                    className="px-4 py-2 bg-white text-black hover:bg-slate-100 disabled:opacity-50 transition-colors"
                   >
                     {adding ? 'Adding...' : `Add ${selected.size} Prompt${selected.size !== 1 ? 's' : ''}`}
-                  </Button>
+                  </button>
                 </div>
               </div>
             </div>

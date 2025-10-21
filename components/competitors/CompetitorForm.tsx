@@ -28,13 +28,13 @@ export default function CompetitorForm({ brandId, onAdded }: { brandId: string, 
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-2">
+    <form onSubmit={handleSubmit} className="space-y-3">
       <input
         type="text"
         value={formData.competitor_name}
         onChange={(e) => setFormData({ ...formData, competitor_name: e.target.value })}
         placeholder="Competitor Name"
-        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:border-slate-900 focus:ring-2 focus:ring-slate-200 outline-none"
+        className="w-full px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 outline-none"
         required
       />
       <input
@@ -42,7 +42,7 @@ export default function CompetitorForm({ brandId, onAdded }: { brandId: string, 
         value={formData.competitor_domain}
         onChange={(e) => setFormData({ ...formData, competitor_domain: e.target.value })}
         placeholder="competitor.com"
-        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:border-slate-900 focus:ring-2 focus:ring-slate-200 outline-none"
+        className="w-full px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 outline-none"
         required
       />
       <input
@@ -50,13 +50,13 @@ export default function CompetitorForm({ brandId, onAdded }: { brandId: string, 
         value={formData.region}
         onChange={(e) => setFormData({ ...formData, region: e.target.value })}
         placeholder="Region"
-        className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:border-slate-900 focus:ring-2 focus:ring-slate-200 outline-none"
+        className="w-full px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 outline-none"
         required
       />
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-slate-900 text-white py-2 rounded-lg hover:bg-slate-800 disabled:opacity-50"
+        className="w-full bg-white text-black px-4 py-3 hover:bg-slate-100 disabled:opacity-50 transition-colors"
       >
         Add Competitor
       </button>
