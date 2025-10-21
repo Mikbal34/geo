@@ -19,6 +19,7 @@ export interface LLMRun {
   sentiment: SentimentType | null
   position: number | null
   mentions_count: number
+  analysis_run_id?: string
   created_at: string
 }
 
