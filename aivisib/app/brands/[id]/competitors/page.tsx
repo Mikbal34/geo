@@ -101,7 +101,7 @@ export default function CompetitorsPage() {
                 <p className="text-slate-600">Add your first competitor above to get started!</p>
               </div>
             ) : (
-              <CompetitorList competitors={competitors} />
+              <CompetitorList competitors={competitors} onDelete={fetchCompetitors} />
             )}
           </div>
 
