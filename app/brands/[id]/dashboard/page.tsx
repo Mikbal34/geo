@@ -1,19 +1,45 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import Navigation from '@/components/layout/Navigation'
-import { ScoreLLM, ScoreOverall } from '@/types/llm'
-import { BarChart3, ExternalLink, Filter, TrendingUp, ChevronDown, Calendar, Download } from 'lucide-react'
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, LabelList } from 'recharts'
+import {
+  AlertCircle,
+  ArrowLeft,
+  Calendar,
+  Check,
+  Download,
+  ExternalLink,
+  Filter,
+  Moon,
+  Sparkles,
+  Sun,
+  TrendingUp,
+} from 'lucide-react'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
-import { exportDashboardToExcel } from '@/lib/utils/excel-export'
-import { Brand } from '@/types/brand'
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  LabelList,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts'
 
+import Navigation from '@/components/layout/Navigation'
+import { exportDashboardToExcel } from '@/lib/utils/excel-export'
+import type { Brand } from '@/types/brand'
+import type { ScoreLLM, ScoreOverall } from '@/types/llm'
+
+type Theme = 'light' | 'dark'
 type LLMProvider = 'chatgpt' | 'gemini' | 'perplexity'
 type TimeFilter = '24h' | '7d' | '30d' | 'custom'
-type MonthlyView = 'daily' | 'weekly' // For 30d filter
+type MonthlyView = 'daily' | 'weekly'
 
 interface CompetitorScore {
   competitor_name: string
@@ -45,62 +71,61 @@ interface AnalysisHistory {
 }
 
 export default function DashboardPage() {
-  const params = useParams()
   const router = useRouter()
-  const brandId = params.id as string
+  const params = useParams<{ id: string }>()
+  const brandId = params.id
+
+  const [theme, setTheme] = useState<Theme>('light')
+  const isDark = theme === 'dark'
+
   const [brand, setBrand] = useState<Brand | null>(null)
   const [overallScore, setOverallScore] = useState<ScoreOverall | null>(null)
   const [llmScores, setLLMScores] = useState<ScoreLLM[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedLLMs, setSelectedLLMs] = useState<LLMProvider[]>(['chatgpt', 'gemini', 'perplexity']) // All selected by default
+
+  const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistory | null>(null)
+  const [availableRuns, setAvailableRuns] = useState<any[]>([])
+
   const [competitorScores, setCompetitorScores] = useState<CompetitorScore[]>([])
   const [loadingCompetitors, setLoadingCompetitors] = useState(true)
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
-  const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistory | null>(null)
 
-  // Time filtering state (for Historical Trends only, ranking always shows latest)
+  const [selectedLLMs, setSelectedLLMs] = useState<LLMProvider[]>(['chatgpt', 'gemini', 'perplexity'])
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('24h')
-  const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false)
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null)
-  const [availableRuns, setAvailableRuns] = useState<any[]>([])
-  const timeFilterRef = useRef<HTMLDivElement>(null)
-
-  // Custom date range for 'custom' filter
-  const [startDate, setStartDate] = useState<Date | null>(null)
-  const [endDate, setEndDate] = useState<Date | null>(null)
-  const [showDatePicker, setShowDatePicker] = useState(false)
-
-  // Monthly view toggle (daily/weekly) for 30d filter
   const [monthlyView, setMonthlyView] = useState<MonthlyView>('daily')
-
-  // Chart type toggle for Historical Trends
   const [selectedChart, setSelectedChart] = useState<'trend' | 'metrics'>('trend')
 
+  const [showDatePicker, setShowDatePicker] = useState(false)
+  const [startDate, setStartDate] = useState<Date | null>(null)
+  const [endDate, setEndDate] = useState<Date | null>(null)
+
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null)
+
   useEffect(() => {
+    const storedTheme = localStorage.getItem('auth_theme')
+    if (storedTheme === 'light' || storedTheme === 'dark') {
+      setTheme(storedTheme)
+    }
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem('auth_theme', theme)
+  }, [theme])
+
+  useEffect(() => {
+    if (!brandId) return
+
     fetchBrand()
     fetchScores()
     fetchAnalysisHistory()
   }, [brandId])
 
   useEffect(() => {
+    if (!brandId) return
     fetchCompetitorScores()
   }, [brandId, selectedLLMs])
 
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsDropdownOpen(false)
-      }
-      if (timeFilterRef.current && !timeFilterRef.current.contains(event.target as Node)) {
-        setIsTimeFilterOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [])
-
-  useEffect(() => {
+    if (!brandId) return
     fetchAvailableRuns()
   }, [brandId, timeFilter, selectedLLMs, monthlyView, startDate, endDate])
 
@@ -111,6 +136,96 @@ export default function DashboardPage() {
       setBrand(data.brand)
     } catch (error) {
       console.error('Error fetching brand:', error)
+    }
+  }
+
+  const fetchScores = async () => {
+    try {
+      const res = await fetch(`/api/scores-overall/${brandId}`)
+      const data = await res.json()
+      setOverallScore(data.overall)
+      setLLMScores(data.per_llm || [])
+    } catch (error) {
+      console.error('Error fetching scores:', error)
+      setStatusError('Unable to load scores')
+    } 
+  }
+
+  const fetchCompetitorScores = async () => {
+    setLoadingCompetitors(true)
+    try {
+      const llmParam = selectedLLMs.length === 0 || selectedLLMs.length === 3 ? 'overall' : selectedLLMs[0]
+      const res = await fetch(`/api/competitors/${brandId}/scores?llm=${llmParam}`)
+      const data = await res.json()
+      setCompetitorScores(data.competitor_scores || [])
+    } catch (error) {
+      console.error('Error fetching competitor scores:', error)
+    } finally {
+      setLoadingCompetitors(false)
+    }
+  }
+
+  const fetchAnalysisHistory = async () => {
+    try {
+      const res = await fetch(`/api/analysis-history/${brandId}`)
+      const data = await res.json()
+      if (data.success) {
+        setAnalysisHistory(data)
+      }
+    } catch (error) {
+      console.error('Error fetching analysis history:', error)
+    }
+  }
+
+  const fetchAvailableRuns = async () => {
+    try {
+      const params = new URLSearchParams()
+      params.append('filter', timeFilter)
+
+      if (timeFilter === 'custom' && startDate && endDate) {
+        params.append('from', startDate.toISOString())
+        params.append('to', endDate.toISOString())
+      }
+
+      if (timeFilter === '30d') {
+        params.append('view', monthlyView)
+      }
+
+      if (selectedLLMs.length === 1) {
+        params.append('llm', selectedLLMs[0])
+      }
+
+      const queryString = params.toString() ? `?${params.toString()}` : ''
+      const res = await fetch(`/api/analysis-runs/${brandId}${queryString}`)
+      const data = await res.json()
+
+      if (data.success) {
+        setAvailableRuns(data.runs || [])
+      }
+    } catch (error) {
+      console.error('Error fetching analysis runs:', error)
+    }
+  }
+
+  const handleTimeFilterChange = (filter: TimeFilter) => {
+    setTimeFilter(filter)
+
+    if (filter === 'custom') {
+      setShowDatePicker(true)
+    } else {
+      setStartDate(null)
+      setEndDate(null)
+      setShowDatePicker(false)
+    }
+
+    if (filter === '30d') {
+      setMonthlyView('daily')
+    }
+  }
+
+  const handleCustomDateApply = () => {
+    if (startDate && endDate) {
+      fetchAvailableRuns()
     }
   }
 
@@ -129,135 +244,58 @@ export default function DashboardPage() {
       historicalData: availableRuns,
       competitorScores,
       timeFilter,
-      selectedLLMs
+      selectedLLMs,
     })
   }
 
-  const fetchScores = async () => {
+  const handleAnalyze = async (e: ReactMouseEvent<HTMLButtonElement>) => {
+    e.preventDefault()
+    setAnalyzeError(null)
+
     try {
-      const res = await fetch(`/api/scores-overall/${brandId}`)
+      const res = await fetch('/api/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ brandId }),
+      })
       const data = await res.json()
-      setOverallScore(data.overall)
-      setLLMScores(data.per_llm || [])
+      if (!res.ok) {
+        throw new Error(data.error || 'Analysis failed')
+      }
+      router.push(`/brands/${brandId}/dashboard`)
     } catch (error) {
-      console.error('Error fetching scores:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const fetchCompetitorScores = async () => {
-    setLoadingCompetitors(true)
-    try {
-      // If all 3 selected or none selected, show overall
-      const llmParam = selectedLLMs.length === 0 || selectedLLMs.length === 3 ? 'overall' : selectedLLMs[0]
-      // Ranking always shows latest - no run_id filter
-      const res = await fetch(`/api/competitors/${brandId}/scores?llm=${llmParam}`)
-      const data = await res.json()
-      console.log('Competitor scores API response:', data)
-      console.log('Competitor scores data:', data.competitor_scores)
-      setCompetitorScores(data.competitor_scores || [])
-    } catch (error) {
-      console.error('Error fetching competitor scores:', error)
-    } finally {
-      setLoadingCompetitors(false)
-    }
-  }
-
-  const fetchAvailableRuns = async () => {
-    try {
-      const params = new URLSearchParams()
-
-      params.append('filter', timeFilter)
-
-      // Add custom date range params if applicable
-      if (timeFilter === 'custom' && startDate && endDate) {
-        params.append('from', startDate.toISOString())
-        params.append('to', endDate.toISOString())
-      }
-
-      // Add monthly view param for 30d filter
-      if (timeFilter === '30d') {
-        params.append('view', monthlyView) // 'daily' or 'weekly'
-      }
-
-      // Add LLM filter only if single LLM selected
-      if (selectedLLMs.length === 1) {
-        params.append('llm', selectedLLMs[0])
-      }
-
-      const queryString = params.toString() ? `?${params.toString()}` : ''
-      const res = await fetch(`/api/analysis-runs/${brandId}${queryString}`)
-      const data = await res.json()
-
-      if (data.success) {
-        setAvailableRuns(data.runs || [])
-        // Auto-select latest run if none selected
-        if (!selectedRunId && data.latest_run) {
-          setSelectedRunId(data.latest_run.id)
-        }
-      }
-    } catch (error) {
-      console.error('Error fetching analysis runs:', error)
-    }
-  }
-
-  const handleTimeFilterChange = (filter: TimeFilter) => {
-    setTimeFilter(filter)
-    setIsTimeFilterOpen(false)
-
-    if (filter === 'custom') {
-      setShowDatePicker(true)
-    } else {
-      setStartDate(null)
-      setEndDate(null)
-      setShowDatePicker(false)
-    }
-
-    if (filter === '30d') {
-      setMonthlyView('daily') // Reset to daily when selecting 30d
-    }
-  }
-
-  const handleCustomDateApply = () => {
-    if (startDate && endDate) {
-      setShowDatePicker(false)
-      fetchAvailableRuns() // Refresh data with custom range
+      console.error(error)
+      setAnalyzeError(error instanceof Error ? error.message : 'Analysis failed unexpectedly')
     }
   }
 
   const getTimeFilterLabel = () => {
     switch (timeFilter) {
-      case '24h': return '24 Hours'
-      case '7d': return '7 Days'
-      case '30d': return '1 Month'
+      case '24h':
+        return '24 Hours'
+      case '7d':
+        return '7 Days'
+      case '30d':
+        return '1 Month'
       case 'custom':
         if (startDate && endDate) {
-          return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+          return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+          })}`
         }
         return 'Custom'
-      default: return '24 Hours'
-    }
-  }
-
-  const fetchAnalysisHistory = async () => {
-    try {
-      const res = await fetch(`/api/analysis-history/${brandId}`)
-      const data = await res.json()
-      if (data.success) {
-        setAnalysisHistory(data)
-      }
-    } catch (error) {
-      console.error('Error fetching analysis history:', error)
+      default:
+        return '24 Hours'
     }
   }
 
   const getLLMColor = (llm: string) => {
     switch (llm) {
       case 'chatgpt':
-        return { bg: 'from-green-500 to-emerald-500', fill: '#10b981' }
+        return { bg: 'from-emerald-500 to-teal-400', fill: '#10b981' }
       case 'gemini':
-        return { bg: 'from-blue-500 to-cyan-500', fill: '#3b82f6' }
+        return { bg: 'from-blue-500 to-sky-400', fill: '#3b82f6' }
       case 'perplexity':
         return { bg: 'from-purple-500 to-pink-500', fill: '#a855f7' }
       default:
@@ -267,31 +305,30 @@ export default function DashboardPage() {
 
   const getLLMName = (llm: string) => {
     switch (llm) {
-      case 'chatgpt': return 'ChatGPT'
-      case 'gemini': return 'Gemini'
-      case 'perplexity': return 'Perplexity'
-      default: return llm
+      case 'chatgpt':
+        return 'ChatGPT'
+      case 'gemini':
+        return 'Gemini'
+      case 'perplexity':
+        return 'Perplexity'
+      default:
+        return llm
     }
   }
 
-  // Calculate average score from multiple LLMs
   const calculateAverageScore = (llms: LLMProvider[]): ScoreOverall | ScoreLLM | null => {
     if (llms.length === 0) return overallScore
-    if (llms.length === 1) return llmScores.find(s => s.llm === llms[0]) || null
+    if (llms.length === 1) return llmScores.find((s) => s.llm === llms[0]) || null
 
-    // Get selected LLM scores
-    const selectedScores = llmScores.filter(s => llms.includes(s.llm as LLMProvider))
+    const selectedScores = llmScores.filter((s) => llms.includes(s.llm as LLMProvider))
     if (selectedScores.length === 0) return null
 
-    // Calculate averages
     const visibility_pct = selectedScores.reduce((sum, s) => sum + (s.visibility_pct || 0), 0) / selectedScores.length
     const sentiment_pct = selectedScores.reduce((sum, s) => sum + (s.sentiment_pct || 0), 0) / selectedScores.length
 
-    // Position: average only non-null values
-    const positions = selectedScores.map(s => s.avg_position_raw).filter(p => p !== null) as number[]
+    const positions = selectedScores.map((s) => s.avg_position_raw).filter((p): p is number => p !== null)
     const avg_position_raw = positions.length > 0 ? positions.reduce((sum, p) => sum + p, 0) / positions.length : null
 
-    // Mentions: sum all
     const mentions_raw = selectedScores.reduce((sum, s) => sum + (s.mentions_raw || 0), 0)
 
     return {
@@ -299,448 +336,433 @@ export default function DashboardPage() {
       sentiment_pct,
       avg_position_raw,
       mentions_raw,
-      llm: 'custom' as any // Custom average
+      llm: 'custom' as any,
     } as any
   }
 
-  // Get filtered scores
   const getFilteredScore = () => {
-    // All selected or none selected = Overall
     if (selectedLLMs.length === 0 || selectedLLMs.length === 3) {
       return overallScore
     }
-    // Single LLM selected
     if (selectedLLMs.length === 1) {
-      return llmScores.find(s => s.llm === selectedLLMs[0]) || null
+      return llmScores.find((s) => s.llm === selectedLLMs[0]) || null
     }
-    // Multiple LLMs selected = Calculate average
     return calculateAverageScore(selectedLLMs)
   }
 
-  const filteredScore = getFilteredScore()
+  const filteredScore = getFilteredScore();
 
-  // Generate Executive Summary
-  const generateExecutiveSummary = (score: ScoreOverall | ScoreLLM | null) => {
-    if (!score) return ''
+  const percentageMetrics = filteredScore
+    ? [
+        {
+          category: 'Visibility',
+          score: Math.round(filteredScore.visibility_pct || 0),
+          description: 'Brand presence %',
+        },
+        {
+          category: 'Sentiment',
+          score: Math.round(filteredScore.sentiment_pct || 0),
+          description: 'Positive sentiment %',
+        },
+      ]
+    : [];
 
-    const visibility = Math.round(score.visibility_pct || 0)
-    const sentiment = Math.round(score.sentiment_pct || 0)
-    const mentions = 'mentions_raw_total' in score ? score.mentions_raw_total : score.mentions_raw
-    const position = score.avg_position_raw || 0
+  const numericalMetrics = filteredScore
+    ? [
+        {
+          category: 'Avg Position',
+          value: filteredScore.avg_position_raw || 0,
+          description: 'Average ranking (1-10)',
+        },
+        {
+          category: 'Mentions',
+          value: 'mentions_raw_total' in filteredScore ? filteredScore.mentions_raw_total : (filteredScore as any).mentions_raw || 0,
+          description: 'Total brand mentions',
+        },
+      ]
+    : [];
 
-    let summaryParts = []
+  const trendData =
+    availableRuns.length > 0
+      ? availableRuns
+          .map((run) => ({
+            date: new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            Visibility: Math.round(run.visibility_pct || 0),
+            Sentiment: Math.round(run.sentiment_pct || 0),
+            Position: run.avg_position_raw ? Number(run.avg_position_raw.toFixed(1)) : 0,
+            Mentions: run.mentions_raw_total || 0,
+          }))
+          .reverse()
+      : filteredScore
+        ? [
+            {
+              date: 'Current',
+              Visibility: Math.round(filteredScore.visibility_pct || 0),
+              Sentiment: Math.round(filteredScore.sentiment_pct || 0),
+              Position: filteredScore.avg_position_raw ? Number(filteredScore.avg_position_raw.toFixed(1)) : 0,
+              Mentions: 'mentions_raw_total' in filteredScore ? filteredScore.mentions_raw_total || 0 : (filteredScore as any).mentions_raw || 0,
+            },
+          ]
+        : [];
 
-    // Visibility assessment
-    if (visibility >= 70) {
-      summaryParts.push(`Strong market presence with ${visibility}% visibility across AI platforms`)
-    } else if (visibility >= 40) {
-      summaryParts.push(`Moderate visibility at ${visibility}%, indicating room for improvement`)
-    } else {
-      summaryParts.push(`Low visibility at ${visibility}%, requires immediate strategic attention`)
-    }
+  const competitorRankingData =
+    filteredScore && competitorScores.length > 0
+      ? (() => {
+          const ownBrand = {
+            rank: 1,
+            brand: brand?.brand_name || 'Your Brand',
+            visibility: Math.round(filteredScore.visibility_pct || 0),
+            sentiment: Math.round(filteredScore.sentiment_pct || 0),
+            position: filteredScore.avg_position_raw || 0,
+            mentions: 'mentions_raw_total' in filteredScore ? filteredScore.mentions_raw_total : 'mentions_raw' in filteredScore ? filteredScore.mentions_raw : 0,
+            isOwn: true,
+          }
 
-    // Sentiment assessment
-    if (sentiment >= 60) {
-      summaryParts.push(`positive sentiment (${sentiment}%)`)
-    } else if (sentiment >= 40) {
-      summaryParts.push(`neutral sentiment (${sentiment}%)`)
-    } else {
-      summaryParts.push(`concerning sentiment (${sentiment}%)`)
-    }
+          const competitors = competitorScores.map((comp, idx) => ({
+            rank: idx + 2,
+            brand: comp.competitor_name,
+            visibility: comp.visibility_pct || 0,
+            sentiment: comp.sentiment_pct || 0,
+            position: comp.avg_position || 0,
+            mentions: comp.mentions_total || 0,
+            isOwn: false,
+          }))
 
-    // Position assessment
-    if (position > 0 && position <= 3) {
-      summaryParts.push(`achieving top-3 average ranking`)
-    } else if (position > 3 && position <= 5) {
-      summaryParts.push(`ranking in top-5 positions`)
-    }
+          const combined = [ownBrand, ...competitors];
+          const sorted = combined.sort((a, b) => b.visibility - a.visibility);
+          return sorted.map((item, idx) => ({ ...item, rank: idx + 1 }));
+        })()
+      : [];
 
-    return summaryParts.join(', ') + '.'
-  }
-
-  const generateCompetitorSummary = () => {
-    if (!overallScore || competitorScores.length === 0) return ''
-
-    const brandVisibility = Math.round(overallScore.visibility_pct || 0)
-    const avgCompetitorVisibility = Math.round(
-      competitorScores.reduce((sum, c) => sum + c.visibility_pct, 0) / competitorScores.length
-    )
-
-    const brandSentiment = Math.round(overallScore.sentiment_pct || 0)
-    const topCompetitor = competitorScores.reduce((max, c) =>
-      c.visibility_pct > max.visibility_pct ? c : max
-    )
-
-    if (brandVisibility > avgCompetitorVisibility) {
-      return `Your brand outperforms competitors with ${brandVisibility}% visibility vs. market average of ${avgCompetitorVisibility}%. Key competitor ${topCompetitor.competitor_name} shows ${topCompetitor.visibility_pct}% visibility, requiring continuous monitoring.`
-    } else {
-      return `Competitive gap identified: Your brand at ${brandVisibility}% visibility trails market average of ${avgCompetitorVisibility}%. ${topCompetitor.competitor_name} leads with ${topCompetitor.visibility_pct}%, presenting strategic opportunities for differentiation.`
-    }
-  }
-
-  // Prepare data - AYRI: Yüzdelik metrikler vs Sayısal metrikler
-  const percentageMetrics = filteredScore ? [
-    {
-      category: 'Visibility',
-      score: Math.round(filteredScore.visibility_pct || 0),
-      description: 'Brand presence %'
-    },
-    {
-      category: 'Sentiment',
-      score: Math.round(filteredScore.sentiment_pct || 0),
-      description: 'Positive sentiment %'
-    }
-  ] : []
-
-  const numericalMetrics = filteredScore ? [
-    {
-      category: 'Avg Position',
-      value: filteredScore.avg_position_raw || 0,
-      description: 'Average ranking (1-10)'
-    },
-    {
-      category: 'Mentions',
-      value: 'mentions_raw_total' in filteredScore ? filteredScore.mentions_raw_total : (filteredScore as any).mentions_raw || 0,
-      description: 'Total brand name mentions'
-    }
-  ] : []
-
-  // Prepare data for LLM comparison - AYRI grafikler
-  const llmPercentageData = llmScores.map(score => ({
+  const llmPercentageData = llmScores.map((score) => ({
     llm: getLLMName(score.llm),
     'Visibility %': Math.round(score.visibility_pct || 0),
-    'Sentiment %': Math.round(score.sentiment_pct || 0)
-  }))
+    'Sentiment %': Math.round(score.sentiment_pct || 0),
+  }));
 
-  const llmNumericalData = llmScores.map(score => ({
+  const llmNumericalData = llmScores.map((score) => ({
     llm: getLLMName(score.llm),
     'Avg Position': score.avg_position_raw || 0,
-    'Mentions': score.mentions_raw || 0
-  }))
+    Mentions: score.mentions_raw || 0,
+  }));
 
-  // Visibility Trend Data - Use filtered runs from time filter
-  const trendData = availableRuns.length > 0
-    ? availableRuns.map(run => ({
-        date: new Date(run.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        Visibility: Math.round(run.visibility_pct || 0),
-        Sentiment: Math.round(run.sentiment_pct || 0),
-        Position: run.avg_position_raw ? Number(run.avg_position_raw.toFixed(1)) : 0,
-        Mentions: run.mentions_raw_total || 0
-      })).reverse() // Reverse to show oldest to newest
-    : filteredScore ? [
-        {
-          date: 'Current',
-          Visibility: Math.round(filteredScore.visibility_pct || 0),
-          Sentiment: Math.round(filteredScore.sentiment_pct || 0),
-          Position: filteredScore.avg_position_raw ? Number(filteredScore.avg_position_raw.toFixed(1)) : 0,
-          Mentions: 'mentions_raw_total' in filteredScore ? filteredScore.mentions_raw_total || 0 : (filteredScore as any).mentions_raw || 0
-        }
-      ] : []
+  const isDarkChartStroke = isDark ? '#475569' : '#cbd5f5';
+  const axisTickColor = isDark ? '#cbd5f5' : '#475569';
+  const tooltipWrapperStyle = {
+    backgroundColor: isDark ? '#111827' : '#ffffff',
+    borderRadius: '12px',
+    border: `1px solid ${isDark ? '#1f2937' : '#e2e8f0'}`,
+    color: isDark ? '#f8fafc' : '#1f2937',
+  } as const;
 
-  // Competitor Ranking Table Data
-  const competitorRankingData = filteredScore && competitorScores.length > 0 ? (() => {
-    const ownBrand = {
-      rank: 1,
-      brand: 'Your Brand',
-      visibility: Math.round(filteredScore.visibility_pct || 0),
-      sentiment: Math.round(filteredScore.sentiment_pct || 0),
-      position: filteredScore.avg_position_raw || 0,
-      mentions: 'mentions_raw_total' in filteredScore ? filteredScore.mentions_raw_total : ('mentions_raw' in filteredScore ? filteredScore.mentions_raw : 0),
-      isOwn: true
-    }
+  const containerClass = [
+    'relative min-h-screen px-4 pb-16 pt-12 transition-colors',
+    isDark ? 'bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900' : 'bg-gradient-to-br from-slate-50 via-white to-slate-100',
+  ].join(' ');
 
-    const competitors = competitorScores.map((comp, idx) => {
-      console.log('Mapping competitor:', comp.competitor_name, {
-        visibility: comp.visibility_pct,
-        sentiment: comp.sentiment_pct,
-        position: comp.avg_position,
-        mentions: comp.mentions_total
-      })
-      return {
-        rank: idx + 2,
-        brand: comp.competitor_name,
-        visibility: comp.visibility_pct || 0,
-        sentiment: comp.sentiment_pct || 0,
-        position: comp.avg_position || 0,
-        mentions: comp.mentions_total || 0,
-        isOwn: false
-      }
-    })
+  const toggleButtonClass = [
+    'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2',
+    isDark
+      ? 'border-white/10 bg-white/10 text-slate-100 hover:bg-white/20 focus:ring-white/30 focus:ring-offset-0'
+      : 'border-slate-200 bg-white text-slate-600 hover:text-slate-800 shadow-sm focus:ring-slate-200 focus:ring-offset-2 focus:ring-offset-white',
+  ].join(' ');
 
-    const combined = [ownBrand, ...competitors]
-    const sorted = combined.sort((a, b) => b.visibility - a.visibility)
-    const ranked = sorted.map((item, idx) => ({ ...item, rank: idx + 1 }))
+  const backButtonClass = [
+    'inline-flex items-center gap-2 text-sm font-medium transition-colors',
+    isDark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900',
+  ].join(' ');
 
-    console.log('Final competitor ranking data:', ranked)
-    return ranked
-  })() : []
+  const panelClass = [
+    'rounded-3xl border p-6 shadow-lg transition-colors sm:p-8',
+    isDark ? 'border-white/10 bg-white/5 backdrop-blur-xl shadow-black/30' : 'border-slate-200 bg-white shadow-slate-200/70',
+  ].join(' ');
 
-  // LLM Performance Table Data
-  const llmTableData = llmScores.map(score => ({
-    llm: getLLMName(score.llm),
-    llmKey: score.llm,
-    visibility: Math.round(score.visibility_pct || 0),
-    sentiment: Math.round(score.sentiment_pct || 0),
-    position: score.avg_position_raw || 0,
-    mentions: score.mentions_raw || 0
-  }))
+  const subPanelClass = [
+    'rounded-2xl border p-4 transition-colors',
+    isDark ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-slate-50',
+  ].join(' ');
 
-  // Helper function for status badge
-  const getStatusBadge = (value: number, type: 'percentage' | 'position') => {
-    if (type === 'percentage') {
-      if (value >= 70) return '🟢'
-      if (value >= 40) return '🟡'
-      return '🔴'
-    } else {
-      if (value <= 3) return '🟢'
-      if (value <= 5) return '🟡'
-      return '🔴'
-    }
-  }
+  const softPanelClass = [
+    'rounded-2xl border p-4 transition-colors',
+    isDark ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white',
+  ].join(' ');
+
+  const mutedTextClass = isDark ? 'text-slate-400' : 'text-slate-500';
+  const strongTextClass = isDark ? 'text-white' : 'text-slate-900';
+  const chipActiveClass = isDark ? 'border border-white/20 bg-slate-900 text-white' : 'border border-slate-900 bg-slate-900 text-white';
+  const chipClass = isDark ? 'border border-white/10 bg-white/10 text-slate-200' : 'border border-slate-200 bg-white text-slate-600';
+  const dividerClass = isDark ? 'border-white/10' : 'border-slate-200';
+  const llmOptions: Array<{ value: LLMProvider; label: string }> = [
+    { value: 'chatgpt', label: 'ChatGPT' },
+    { value: 'gemini', label: 'Gemini' },
+    { value: 'perplexity', label: 'Perplexity' },
+  ];
+  const timeOptions: Array<{ value: TimeFilter; label: string }> = [
+    { value: '24h', label: '24 Hours' },
+    { value: '7d', label: '7 Days' },
+    { value: '30d', label: '1 Month' },
+    { value: 'custom', label: 'Custom range' },
+  ];
+  const isAllLLMsSelected = selectedLLMs.length === 0 || selectedLLMs.length === llmOptions.length;
 
   return (
     <>
-      <Navigation />
-      <div className="min-h-screen bg-black">
-        <div className="container mx-auto px-6 py-4">
-        <div className="max-w-full mx-auto">
-          {/* Header */}
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <div>
-              <div className="inline-block mb-1">
-                <span className="text-slate-400 text-xs font-semibold tracking-wider uppercase">
-                  Brand Intelligence
-                </span>
-              </div>
-              <h1 className="text-2xl font-bold text-white">Dashboard</h1>
-            </div>
-            <div className="flex items-center gap-2">
-              {/* Action Buttons Group */}
-              <div className="flex items-center gap-1 bg-[#0a0a0a] border border-slate-800 p-1">
-                <button
-                  onClick={handleExportToExcel}
-                  disabled={!brand || !overallScore}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-green-400 hover:bg-green-900/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  title="Export to Excel"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  Export
-                </button>
-                <div className="w-px h-4 bg-slate-800"></div>
-                <button
-                  onClick={() => router.push(`/brands/${brandId}/results`)}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-                  title="View Results"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                  </svg>
-                  Results
-                </button>
-              </div>
-
-              {/* Primary Action */}
+      <Navigation theme={theme} />
+      <main className={containerClass}>
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <button type="button" onClick={() => router.back()} className={backButtonClass}>
+                <ArrowLeft className="h-4 w-4" />
+                Back
+              </button>
               <button
-                onClick={() => router.push(`/brands/${brandId}/prompts`)}
-                className="inline-flex items-center gap-1.5 bg-white text-black px-3 py-1.5 text-xs font-semibold hover:bg-slate-100 transition-colors shadow-sm"
+                type="button"
+                onClick={() => router.push(`/brands/${brandId}/results`)}
+                className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors hover:opacity-90`}
               >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-                Add Prompts
+                View results
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/brands/${brandId}/settings`)}
+                className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors hover:opacity-90`}
+              >
+                Settings
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={handleExportToExcel}
+                disabled={!brand || !filteredScore}
+                className={[
+                  'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60',
+                  isDark ? 'bg-white text-black hover:bg-slate-100 focus:ring-white/70 focus:ring-offset-slate-900' : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-900 focus:ring-offset-white',
+                ].join(' ')}
+              >
+                <Download className="h-4 w-4" />
+                Export
+              </button>
+              {brand?.domain && (
+                <a
+                  href={`https://${brand.domain}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={[
+                    'inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2',
+                    isDark ? 'border-white/10 text-slate-100 hover:bg-white/10 focus:ring-white/30 focus:ring-offset-0' : 'border-slate-200 text-slate-600 hover:bg-slate-100 focus:ring-slate-200 focus:ring-offset-white',
+                  ].join(' ')}
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  Visit site
+                </a>
+              )}
+              <button
+                type="button"
+                onClick={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
+                className={toggleButtonClass}
+                aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+                aria-pressed={isDark}
+              >
+                {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+                <span>{isDark ? 'Light mode' : 'Dark mode'}</span>
               </button>
             </div>
           </div>
 
-          {loading ? (
-            <div className="flex items-center justify-center h-96">
-              <div className="text-center">
-                <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-slate-700 border-t-white mb-4" />
-                <p className="text-slate-400">Loading dashboard...</p>
-              </div>
-            </div>
-          ) : !overallScore ? (
-            <div className="bg-[#171717] shadow-xl border border-slate-800 p-12 text-center">
-              <div className="w-20 h-20 bg-slate-800 flex items-center justify-center mx-auto mb-6">
-                <svg className="w-10 h-10 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-              <h2 className="text-2xl font-bold text-white mb-3">No Analysis Yet</h2>
-              <p className="text-slate-400 mb-8 max-w-md mx-auto">
-                Add prompts to run your first AI-powered analysis and unlock deep insights into your brand's market position across 4 key dimensions.
-              </p>
-              <button
-                onClick={() => router.push(`/brands/${brandId}/prompts`)}
-                className="inline-flex items-center gap-2 bg-white text-black px-8 py-4 font-semibold hover:bg-slate-100 transition-all duration-300"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Add Prompts & Start
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Filters */}
-              <div className="flex items-center justify-end gap-3">
-                {/* Time Filter Dropdown (only affects Historical Trends) */}
-                <div className="relative" ref={timeFilterRef}>
-                  <button
-                    onClick={() => setIsTimeFilterOpen(!isTimeFilterOpen)}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#171717] border border-slate-800 text-sm font-medium text-slate-300 hover:bg-[#0a0a0a] transition-colors"
-                  >
-                    <Calendar className="w-4 h-4" />
+          <div className={panelClass}>
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="space-y-3">
+                <span
+                  className={[
+                    'inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide transition-colors',
+                    isDark ? 'border-white/10 bg-white/10 text-slate-200' : 'border-slate-200 bg-white text-slate-600 shadow-sm',
+                  ].join(' ')}
+                >
+                  Brand intelligence
+                </span>
+                <div>
+                  <h1 className={`text-3xl font-semibold ${strongTextClass}`}>{brand?.brand_name || 'Dashboard'}</h1>
+                  <p className={`mt-1 text-sm ${mutedTextClass}`}>
+                    Consolidated AI visibility across prompts, competitor signals, and historical performance.
+                  </p>
+                </div>
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-medium ${chipClass}`}>
+                    <Filter className="h-3.5 w-3.5" />
+                    {selectedLLMs.length === 0 || selectedLLMs.length === 3 ? 'All LLMs' : selectedLLMs.map(getLLMName).join(', ')}
+                  </span>
+                  <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-medium ${chipClass}`}>
+                    <Calendar className="h-3.5 w-3.5" />
                     {getTimeFilterLabel()}
-                    <ChevronDown className={`w-4 h-4 transition-transform ${isTimeFilterOpen ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {isTimeFilterOpen && (
-                    <div className="absolute right-0 mt-1 w-48 bg-[#171717] border border-slate-800 shadow-lg z-10">
-                      <button
-                        onClick={() => handleTimeFilterChange('24h')}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-[#0a0a0a] text-slate-300 ${
-                          timeFilter === '24h' ? 'bg-[#0a0a0a] font-medium text-white' : ''
-                        }`}
-                      >
-                        Last 24 Hours
-                      </button>
-                      <button
-                        onClick={() => handleTimeFilterChange('7d')}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-[#0a0a0a] text-slate-300 ${
-                          timeFilter === '7d' ? 'bg-[#0a0a0a] font-medium text-white' : ''
-                        }`}
-                      >
-                        Last 7 Days
-                      </button>
-                      <button
-                        onClick={() => handleTimeFilterChange('30d')}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-[#0a0a0a] text-slate-300 ${
-                          timeFilter === '30d' ? 'bg-[#0a0a0a] font-medium text-white' : ''
-                        }`}
-                      >
-                        Last 30 Days
-                      </button>
-                      <button
-                        onClick={() => handleTimeFilterChange('custom')}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-[#0a0a0a] text-slate-300 ${
-                          timeFilter === 'custom' ? 'bg-[#0a0a0a] font-medium text-white' : ''
-                        }`}
-                      >
-                        Custom Range
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* LLM Filter Checkbox Dropdown */}
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                    className="flex items-center gap-2 px-3 py-2 bg-[#171717] border border-slate-800 text-sm font-medium text-slate-300 hover:bg-[#0a0a0a] transition-colors"
-                  >
-                    <Filter className="w-4 h-4" />
-                    {selectedLLMs.length === 0 || selectedLLMs.length === 3
-                      ? 'Overall'
-                      : selectedLLMs.length === 1
-                        ? getLLMName(selectedLLMs[0])
-                        : `${selectedLLMs.length} LLMs`
-                    }
-                    <ChevronDown className={`w-4 h-4 transition-transform ${isDropdownOpen ? 'rotate-180' : ''}`} />
-                  </button>
-
-                  {isDropdownOpen && (
-                    <div className="absolute right-0 mt-1 w-48 bg-[#171717] border border-slate-800 shadow-lg z-10 p-2">
-                      <div className="text-xs font-medium text-slate-500 uppercase px-2 py-1 mb-1">
-                        Select LLMs
-                      </div>
-
-                      {/* ChatGPT Checkbox */}
-                      <label className="flex items-center gap-2 px-2 py-2 hover:bg-[#0a0a0a] rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedLLMs.includes('chatgpt')}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedLLMs([...selectedLLMs, 'chatgpt'])
-                            } else {
-                              setSelectedLLMs(selectedLLMs.filter(llm => llm !== 'chatgpt'))
-                            }
-                          }}
-                          className="w-4 h-4 text-indigo-600 border-slate-700 rounded focus:ring-indigo-500"
-                        />
-                        <span className="text-sm text-slate-300">ChatGPT</span>
-                      </label>
-
-                      {/* Gemini Checkbox */}
-                      <label className="flex items-center gap-2 px-2 py-2 hover:bg-[#0a0a0a] rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedLLMs.includes('gemini')}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedLLMs([...selectedLLMs, 'gemini'])
-                            } else {
-                              setSelectedLLMs(selectedLLMs.filter(llm => llm !== 'gemini'))
-                            }
-                          }}
-                          className="w-4 h-4 text-indigo-600 border-slate-700 rounded focus:ring-indigo-500"
-                        />
-                        <span className="text-sm text-slate-300">Gemini</span>
-                      </label>
-
-                      {/* Perplexity Checkbox */}
-                      <label className="flex items-center gap-2 px-2 py-2 hover:bg-[#0a0a0a] rounded cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={selectedLLMs.includes('perplexity')}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedLLMs([...selectedLLMs, 'perplexity'])
-                            } else {
-                              setSelectedLLMs(selectedLLMs.filter(llm => llm !== 'perplexity'))
-                            }
-                          }}
-                          className="w-4 h-4 text-indigo-600 border-slate-700 rounded focus:ring-indigo-500"
-                        />
-                        <span className="text-sm text-slate-300">Perplexity</span>
-                      </label>
-
-                      <div className="border-t border-slate-800 mt-2 pt-2">
-                        <button
-                          onClick={() => setSelectedLLMs(['chatgpt', 'gemini', 'perplexity'])}
-                          className="w-full text-center px-2 py-1.5 text-xs text-slate-400 hover:bg-[#0a0a0a] rounded"
-                        >
-                          Select All
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  </span>
+                  {analysisHistory?.total_runs ? (
+                    <span className={`inline-flex items-center gap-1 rounded-full px-3 py-1 font-medium ${chipClass}`}>
+                      <Sparkles className="h-3.5 w-3.5" />
+                      {analysisHistory.total_runs} runs completed
+                    </span>
+                  ) : null}
                 </div>
               </div>
+            </div>
 
-              {/* Custom Date Picker Modal */}
-              {showDatePicker && (
-                <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-                  <div className="bg-[#171717] border border-slate-800 shadow-xl p-6 max-w-md w-full mx-4">
-                    <h3 className="text-lg font-bold text-white mb-4">Select Custom Date Range</h3>
+            <div className={`mt-6 grid gap-4 divide-y sm:grid-cols-5 sm:divide-y-0 sm:divide-x ${dividerClass}`}>
+              <div className="space-y-1 px-0 sm:px-4">
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Brand</p>
+                <p className={`text-base font-semibold ${strongTextClass}`}>{brand?.brand_name || '—'}</p>
+                <p className={`text-xs ${mutedTextClass}`}>{brand?.domain}</p>
+              </div>
+              <div className="space-y-1 px-0 sm:px-4">
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Visibility</p>
+                <p className={`text-base font-semibold ${strongTextClass}`}>
+                  {filteredScore ? Math.round(filteredScore.visibility_pct || 0) : 0}%
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>Across selected LLMs</p>
+              </div>
+              <div className="space-y-1 px-0 sm:px-4">
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Sentiment</p>
+                <p className={`text-base font-semibold ${strongTextClass}`}>
+                  {filteredScore ? Math.round(filteredScore.sentiment_pct || 0) : 0}%
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>Positive mention share</p>
+              </div>
+              <div className="space-y-1 px-0 sm:px-4">
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Avg position</p>
+                <p className={`text-base font-semibold ${strongTextClass}`}>
+                  {filteredScore?.avg_position_raw ? filteredScore.avg_position_raw.toFixed(1) : '—'}
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>SERP rank (lower better)</p>
+              </div>
+              <div className="space-y-1 px-0 sm:px-4">
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Mentions</p>
+                <p className={`text-base font-semibold ${strongTextClass}`}>
+                  {filteredScore ? ('mentions_raw_total' in filteredScore ? filteredScore.mentions_raw_total : (filteredScore as any).mentions_raw || 0) : 0}
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>Last run volume</p>
+              </div>
+            </div>
+          </div>
 
-                    <div className="flex gap-4 mb-4">
-                      <div className="flex-1">
-                        <label className="block text-sm font-medium text-slate-400 mb-2">Start Date</label>
+          {statusError && (
+            <div className={panelClass}>
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+                <div>
+                  <p className={`text-sm font-semibold ${strongTextClass}`}>Score data unavailable</p>
+                  <p className={`text-sm ${mutedTextClass}`}>{statusError}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className="space-y-10">
+            <div className="grid gap-6 lg:grid-cols-2">
+              <div className={`${softPanelClass} space-y-4`}>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h2 className={`text-sm font-semibold ${strongTextClass}`}>LLM selection</h2>
+                    <p className={`text-xs ${mutedTextClass}`}>Choose which models contribute to combined metrics.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLLMs([])}
+                    className={`${isAllLLMsSelected ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                    disabled={isAllLLMsSelected}
+                  >
+                    <Filter className="h-3.5 w-3.5" />
+                    All models
+                  </button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {llmOptions.map((option) => {
+                    const active = isAllLLMsSelected || selectedLLMs.includes(option.value)
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => {
+                          setSelectedLLMs((prev) => {
+                            const prevAll = prev.length === 0 || prev.length === llmOptions.length
+                            if (prevAll) {
+                              return [option.value]
+                            }
+                            if (prev.includes(option.value)) {
+                              const next = prev.filter((item) => item !== option.value)
+                              return next.length ? next : []
+                            }
+                            return [...prev, option.value]
+                          })
+                        }}
+                        className={`${active ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition-colors`}
+                      >
+                        <span className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${getLLMColor(option.value).bg}`} />
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+              <div className={`${softPanelClass} space-y-4`}>
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <h2 className={`text-sm font-semibold ${strongTextClass}`}>Time window</h2>
+                    <p className={`text-xs ${mutedTextClass}`}>Adjust the horizon for historical charts.</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {timeOptions.map((option) => {
+                    const active = timeFilter === option.value
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() => handleTimeFilterChange(option.value)}
+                        className={`${active ? (isDark ? 'bg-white text-black' : 'bg-slate-900 text-white') : (isDark ? 'bg-white/10 text-slate-200 hover:bg-white/20' : 'bg-slate-100 text-slate-600 hover:text-slate-900')} rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                      >
+                        {option.label}
+                      </button>
+                    )
+                  })}
+                </div>
+                {timeFilter === '30d' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className={`text-xs font-medium ${mutedTextClass}`}>View granularity:</span>
+                    <div className="inline-flex rounded-full border px-1 py-1">
+                      <button
+                        type="button"
+                        onClick={() => setMonthlyView('daily')}
+                        className={`${monthlyView === 'daily' ? (isDark ? 'bg-white text-black' : 'bg-slate-900 text-white') : (isDark ? 'text-slate-200 hover:text-white' : 'text-slate-500 hover:text-slate-900')} rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                      >
+                        Daily
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setMonthlyView('weekly')}
+                        className={`${monthlyView === 'weekly' ? (isDark ? 'bg-white text-black' : 'bg-slate-900 text-white') : (isDark ? 'text-slate-200 hover:text-white' : 'text-slate-500 hover:text-slate-900')} rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                      >
+                        Weekly
+                      </button>
+                    </div>
+                  </div>
+                )}
+                {timeFilter === 'custom' && showDatePicker && (
+                  <div className={`rounded-2xl border border-dashed ${dividerClass} bg-transparent p-4 space-y-4`}>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className={`mb-2 block text-xs font-medium ${mutedTextClass}`}>Start date</label>
                         <DatePicker
                           selected={startDate}
                           onChange={(date) => setStartDate(date)}
                           selectsStart
                           startDate={startDate}
                           endDate={endDate}
-                          className="w-full px-3 py-2 bg-[#0a0a0a] border border-slate-800 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          placeholderText="Select start date"
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                          placeholderText="Select start"
                         />
                       </div>
-
-                      <div className="flex-1">
-                        <label className="block text-sm font-medium text-slate-400 mb-2">End Date</label>
+                      <div>
+                        <label className={`mb-2 block text-xs font-medium ${mutedTextClass}`}>End date</label>
                         <DatePicker
                           selected={endDate}
                           onChange={(date) => setEndDate(date)}
@@ -748,336 +770,296 @@ export default function DashboardPage() {
                           startDate={startDate}
                           endDate={endDate}
                           minDate={startDate ?? undefined}
-                          className="w-full px-3 py-2 bg-[#0a0a0a] border border-slate-800 text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                          placeholderText="Select end date"
+                          className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                          placeholderText="Select end"
                         />
                       </div>
                     </div>
-
-                    <div className="flex gap-3 justify-end">
+                    <div className="flex justify-end gap-2">
                       <button
-                        onClick={() => {
-                          setShowDatePicker(false)
-                          setTimeFilter('24h')
-                          setStartDate(null)
-                          setEndDate(null)
-                        }}
-                        className="px-4 py-2 text-sm font-medium text-slate-300 border border-slate-800 hover:bg-[#0a0a0a] transition-colors"
+                        type="button"
+                        onClick={() => handleTimeFilterChange('24h')}
+                        className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
                       >
                         Cancel
                       </button>
                       <button
+                        type="button"
                         onClick={handleCustomDateApply}
                         disabled={!startDate || !endDate}
-                        className="px-4 py-2 text-sm font-medium bg-white text-black hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className={`${chipActiveClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors disabled:opacity-50`}
                       >
                         Apply
                       </button>
                     </div>
                   </div>
+                )}
+              </div>
+            </div>
+            <div className={panelClass}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className={`flex items-center gap-2 text-lg font-semibold ${strongTextClass}`}>
+                    <TrendingUp className="h-4 w-4" />
+                    Historical trends
+                  </h2>
+                  <p className={`text-sm ${mutedTextClass}`}>{availableRuns.length} runs in {getTimeFilterLabel()}</p>
                 </div>
-              )}
-
-              {/* Monthly View Toggle (only show for 30d filter) */}
-              {timeFilter === '30d' && (
-                <div className="flex items-center justify-center gap-2 bg-[#171717] border border-slate-800 p-2">
-                  <span className="text-xs font-medium text-slate-400">View:</span>
+                <div className="flex gap-2">
                   <button
-                    onClick={() => setMonthlyView('daily')}
-                    className={`px-3 py-1 text-xs font-medium transition-colors ${
-                      monthlyView === 'daily'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-[#0a0a0a] text-slate-400 hover:bg-slate-800'
-                    }`}
+                    type="button"
+                    onClick={() => setSelectedChart('trend')}
+                    className={[
+                      'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+                      selectedChart === 'trend'
+                        ? isDark
+                          ? 'bg-white text-black'
+                          : 'bg-slate-900 text-white'
+                        : isDark
+                          ? 'bg-white/10 text-slate-200 hover:bg-white/15'
+                          : 'bg-white text-slate-600 hover:text-slate-900',
+                    ].join(' ')}
                   >
-                    Daily (30 points)
+                    Visibility & sentiment
                   </button>
                   <button
-                    onClick={() => setMonthlyView('weekly')}
-                    className={`px-3 py-1 text-xs font-medium transition-colors ${
-                      monthlyView === 'weekly'
-                        ? 'bg-indigo-600 text-white'
-                        : 'bg-[#0a0a0a] text-slate-400 hover:bg-slate-800'
-                    }`}
+                    type="button"
+                    onClick={() => setSelectedChart('metrics')}
+                    className={[
+                      'rounded-full px-3 py-1 text-xs font-semibold transition-colors',
+                      selectedChart === 'metrics'
+                        ? isDark
+                          ? 'bg-white text-black'
+                          : 'bg-slate-900 text-white'
+                        : isDark
+                          ? 'bg-white/10 text-slate-200 hover:bg-white/15'
+                          : 'bg-white text-slate-600 hover:text-slate-900',
+                    ].join(' ')}
                   >
-                    Weekly (4 points)
+                    Position & mentions
                   </button>
-                </div>
-              )}
-
-              {/* Key Metrics Overview - Compact Single Row */}
-              <div className="bg-[#171717] border border-slate-800 p-2.5 flex items-center justify-between gap-6">
-                <div className="flex items-center gap-2">
-                  <div className="text-[9px] font-medium text-slate-500 uppercase">Visibility</div>
-                  <div className="text-base font-bold text-white">
-                    {filteredScore ? Math.round(filteredScore.visibility_pct || 0) : 0}%
-                  </div>
-                </div>
-
-                <div className="w-px h-6 bg-slate-800"></div>
-
-                <div className="flex items-center gap-2">
-                  <div className="text-[9px] font-medium text-slate-500 uppercase">Sentiment</div>
-                  <div className="text-base font-bold text-white">
-                    {filteredScore ? Math.round(filteredScore.sentiment_pct || 0) : 0}%
-                  </div>
-                </div>
-
-                <div className="w-px h-6 bg-slate-800"></div>
-
-                <div className="flex items-center gap-2">
-                  <div className="text-[9px] font-medium text-slate-500 uppercase">Position</div>
-                  <div className="text-base font-bold text-white">
-                    {filteredScore && filteredScore.avg_position_raw ? filteredScore.avg_position_raw.toFixed(1) : 'N/A'}
-                  </div>
-                </div>
-
-                <div className="w-px h-6 bg-slate-800"></div>
-
-                <div className="flex items-center gap-2">
-                  <div className="text-[9px] font-medium text-slate-500 uppercase">Mentions</div>
-                  <div className="text-base font-bold text-white">
-                    {filteredScore ? ('mentions_raw_total' in filteredScore ? filteredScore.mentions_raw_total : (filteredScore as any).mentions_raw || 0) : 0}
-                  </div>
                 </div>
               </div>
 
-              {/* Main Content: Left (Trend) + Right (Ranking) */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                {/* LEFT: Historical Trends (1/2 width) */}
-                <div className="bg-[#171717] shadow-sm border border-slate-800 p-3 flex flex-col">
-                  <div className="flex items-center justify-between mb-1">
-                    <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                      <TrendingUp className="w-4 h-4 text-indigo-400" />
-                      Historical Trends
-                    </h2>
-                    {availableRuns.length > 0 && (
-                      <span className="text-[9px] text-slate-500">
-                        {availableRuns.length} runs ({getTimeFilterLabel()})
-                      </span>
-                    )}
-                  </div>
+              <div className="mt-6 h-96 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  {selectedChart === 'trend' ? (
+                    <LineChart data={trendData} margin={{ top: 12, right: 24, bottom: 0, left: -10 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDarkChartStroke} />
+                      <XAxis tick={{ fill: axisTickColor, fontSize: 11 }} dataKey="date" />
+                      <YAxis yAxisId="left" tick={{ fill: axisTickColor, fontSize: 11 }} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fill: axisTickColor, fontSize: 11 }} domain={[0, 100]} />
+                      <Tooltip wrapperStyle={tooltipWrapperStyle} />
+                      <Legend />
+                      <Line type="monotone" dataKey="Visibility" stroke="#6366f1" strokeWidth={2.4} dot={false} activeDot={{ r: 5 }} yAxisId="right" />
+                      <Line type="monotone" dataKey="Sentiment" stroke="#22d3ee" strokeWidth={2.2} dot={false} activeDot={{ r: 5 }} yAxisId="right" />
+                    </LineChart>
+                  ) : (
+                    <BarChart data={trendData} margin={{ top: 12, right: 24, bottom: 0, left: -10 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke={isDarkChartStroke} />
+                      <XAxis tick={{ fill: axisTickColor, fontSize: 11 }} dataKey="date" />
+                      <YAxis yAxisId="left" tick={{ fill: axisTickColor, fontSize: 11 }} />
+                      <YAxis yAxisId="right" orientation="right" tick={{ fill: axisTickColor, fontSize: 11 }} />
+                      <Tooltip wrapperStyle={tooltipWrapperStyle} />
+                      <Legend />
+                      <Bar dataKey="Position" fill="#8b5cf6" yAxisId="left" radius={[6, 6, 0, 0]}>
+                        <LabelList dataKey="Position" position="top" style={{ fontSize: 10, fontWeight: 600, fill: '#8b5cf6' }} />
+                      </Bar>
+                      <Bar dataKey="Mentions" fill="#10b981" yAxisId="right" radius={[6, 6, 0, 0]}>
+                        <LabelList dataKey="Mentions" position="top" style={{ fontSize: 10, fontWeight: 600, fill: '#10b981' }} />
+                      </Bar>
+                    </BarChart>
+                  )}
+                </ResponsiveContainer>
+              </div>
+            </div>
 
-                  {/* Toggle Buttons */}
-                  <div className="flex gap-1.5 mb-3">
-                    <button
-                      onClick={() => setSelectedChart('trend')}
-                      className={`px-2 py-1 text-[10px] font-medium transition-colors ${
-                        selectedChart === 'trend'
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-[#0a0a0a] text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400'
-                      }`}
-                    >
-                      Visibility & Sentiment
-                    </button>
-                    <button
-                      onClick={() => setSelectedChart('metrics')}
-                      className={`px-2 py-1 text-[10px] font-medium transition-colors ${
-                        selectedChart === 'metrics'
-                          ? 'bg-indigo-600 text-white'
-                          : 'bg-[#0a0a0a] text-slate-500 border border-slate-800 hover:bg-slate-800 hover:text-slate-400'
-                      }`}
-                    >
-                      Position & Mentions
-                    </button>
-                  </div>
+            <div className={panelClass}>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <h2 className={`text-lg font-semibold ${strongTextClass}`}>LLM performance comparison</h2>
+                  <p className={`text-sm ${mutedTextClass}`}>Visibility, sentiment, ranking, and mentions by AI model.</p>
+                </div>
+              </div>
 
-                  <p className="text-xs text-slate-400 mb-3">
-                    {availableRuns.length > 0
-                      ? (selectedChart === 'trend' ? 'Visibility & Sentiment over time' : 'Position & Mentions over time')
-                      : 'Run multiple analyses to see trends'}
-                  </p>
-
-                  <div className="w-full h-48 flex-1" style={{ minWidth: 0 }}>
+              <div className="mt-6 grid gap-6 lg:grid-cols-2">
+                <div className={subPanelClass}>
+                  <h3 className={`text-sm font-semibold ${strongTextClass}`}>Visibility & sentiment (%)</h3>
+                  <div className="mt-4 h-48">
                     <ResponsiveContainer width="100%" height="100%">
-                      {selectedChart === 'trend' ? (
-                        <LineChart
-                          data={trendData}
-                          margin={{ top: 10, right: 15, bottom: 10, left: -10 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis
-                            dataKey="date"
-                            tick={{ fontSize: 10, fill: '#64748b' }}
-                            tickLine={{ stroke: '#64748b' }}
-                          />
-                          <YAxis
-                            tick={{ fontSize: 10, fill: '#64748b' }}
-                            tickLine={{ stroke: '#64748b' }}
-                            domain={[0, 100]}
-                          />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: '#fff',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '8px',
-                              fontSize: '12px',
-                              padding: '8px 12px'
-                            }}
-                          />
-                          <Legend
-                            wrapperStyle={{ fontSize: '10px' }}
-                            iconType="line"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="Visibility"
-                            stroke="#6366f1"
-                            strokeWidth={2}
-                            dot={{ fill: '#6366f1', r: 3 }}
-                            activeDot={{ r: 5 }}
-                            name="Visibility %"
-                          />
-                          <Line
-                            type="monotone"
-                            dataKey="Sentiment"
-                            stroke="#10b981"
-                            strokeWidth={2}
-                            dot={{ fill: '#10b981', r: 3 }}
-                            activeDot={{ r: 5 }}
-                            name="Sentiment %"
-                          />
-                        </LineChart>
-                      ) : (
-                        <BarChart
-                          data={trendData}
-                          margin={{ top: 20, right: 15, bottom: 10, left: -10 }}
-                        >
-                          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
-                          <XAxis
-                            dataKey="date"
-                            tick={{ fontSize: 10, fill: '#64748b' }}
-                            tickLine={{ stroke: '#64748b' }}
-                          />
-                          <YAxis
-                            yAxisId="left"
-                            tick={{ fontSize: 10, fill: '#64748b' }}
-                            tickLine={{ stroke: '#64748b' }}
-                            label={{ value: 'Position (lower = better)', angle: -90, position: 'insideLeft', style: { fontSize: 10, fill: '#64748b' } }}
-                          />
-                          <YAxis
-                            yAxisId="right"
-                            orientation="right"
-                            tick={{ fontSize: 10, fill: '#64748b' }}
-                            tickLine={{ stroke: '#64748b' }}
-                            label={{ value: 'Mentions', angle: 90, position: 'insideRight', style: { fontSize: 10, fill: '#64748b' } }}
-                          />
-                          <Tooltip
-                            contentStyle={{
-                              backgroundColor: '#fff',
-                              border: '1px solid #e2e8f0',
-                              borderRadius: '8px',
-                              fontSize: '12px',
-                              padding: '8px 12px'
-                            }}
-                          />
-                          <Legend
-                            wrapperStyle={{ fontSize: '10px' }}
-                            iconType="rect"
-                          />
-                          <Bar
-                            yAxisId="left"
-                            dataKey="Position"
-                            fill="#8b5cf6"
-                            name="Avg Position"
-                            radius={[4, 4, 0, 0]}
-                          >
-                            <LabelList dataKey="Position" position="top" style={{ fontSize: 10, fill: '#8b5cf6', fontWeight: 600 }} />
-                          </Bar>
-                          <Bar
-                            yAxisId="right"
-                            dataKey="Mentions"
-                            fill="#10b981"
-                            name="Mentions"
-                            radius={[4, 4, 0, 0]}
-                          >
-                            <LabelList dataKey="Mentions" position="top" style={{ fontSize: 10, fill: '#10b981', fontWeight: 600 }} />
-                          </Bar>
-                        </BarChart>
-                      )}
+                      <BarChart data={llmPercentageData} layout="vertical" margin={{ left: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={isDarkChartStroke} />
+                        <XAxis type="number" tick={{ fill: axisTickColor }} />
+                        <YAxis dataKey="llm" type="category" tick={{ fill: axisTickColor }} />
+                        <Tooltip wrapperStyle={tooltipWrapperStyle} />
+                        <Legend />
+                        <Bar dataKey="Visibility %" fill="#6366f1" radius={[0, 10, 10, 0]} />
+                        <Bar dataKey="Sentiment %" fill="#14b8a6" radius={[0, 10, 10, 0]} />
+                      </BarChart>
                     </ResponsiveContainer>
                   </div>
                 </div>
-
-                {/* RIGHT: Industry Ranking (1/2 width) - Vertical Layout */}
-                <div className="bg-[#171717] shadow-sm border border-slate-800 p-3">
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-xs font-semibold text-white">Industry Ranking</h2>
-                    <p className="text-[9px] text-slate-500">Latest analysis</p>
+                <div className={subPanelClass}>
+                  <h3 className={`text-sm font-semibold ${strongTextClass}`}>Position & mentions</h3>
+                  <div className="mt-4 h-48">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={llmNumericalData} layout="vertical" margin={{ left: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke={isDarkChartStroke} />
+                        <XAxis type="number" tick={{ fill: axisTickColor }} />
+                        <YAxis dataKey="llm" type="category" tick={{ fill: axisTickColor }} />
+                        <Tooltip wrapperStyle={tooltipWrapperStyle} />
+                        <Legend />
+                        <Bar dataKey="Avg Position" fill="#8b5cf6" radius={[0, 10, 10, 0]} />
+                        <Bar dataKey="Mentions" fill="#10b981" radius={[0, 10, 10, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
+                </div>
+              </div>
+            </div>
 
-                  {/* Vertical Cards - Scrollable */}
-                  <div className="space-y-2 overflow-y-auto pr-1" style={{ maxHeight: '320px' }}>
-                    {competitorRankingData.length > 0 ? competitorRankingData.map((item) => (
-                      <div
-                        key={item.rank}
-                        className={`p-2 border ${
-                          item.isOwn
-                            ? 'bg-[#0a0a0a] border-slate-700'
-                            : 'bg-black border-slate-800 hover:border-slate-700'
-                        }`}
+            <div className="grid gap-6 lg:grid-cols-3">
+              <div className="lg:col-span-2">
+                <div className={panelClass}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className={`text-lg font-semibold ${strongTextClass}`}>Industry ranking</h2>
+                      <p className={`text-sm ${mutedTextClass}`}>Latest comparison between your brand and tracked competitors.</p>
+                    </div>
+                    {competitorRankingData.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/brands/${brandId}/competitors`)}
+                        className={`${chipClass} inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-semibold transition-colors hover:opacity-90`}
                       >
-                        {/* Brand Header */}
-                        <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-bold text-white">#{item.rank}</span>
-                          <span className="w-5 h-5 bg-slate-800 flex items-center justify-center text-[9px] font-bold text-white">
-                            {item.brand.substring(0, 1).toUpperCase()}
-                          </span>
-                          <span className="text-xs font-semibold text-white flex-1 truncate">{item.brand}</span>
-                        </div>
-
-                        {/* Metrics Grid - 4 columns */}
-                        <div className="grid grid-cols-4 gap-2">
-                          {/* Position */}
-                          <div className="text-left">
-                            <div className="text-[8px] text-slate-500 uppercase mb-0.5">Position</div>
-                            <div className="text-sm font-semibold text-white">
-                              {item.position > 0 ? item.position.toFixed(1) : 'N/A'}
-                            </div>
-                          </div>
-
-                          {/* Sentiment */}
-                          <div className="text-left">
-                            <div className="text-[8px] text-slate-500 uppercase mb-0.5">Sentiment</div>
-                            <div className="text-sm font-semibold text-white">
-                              {item.sentiment}%
-                            </div>
-                          </div>
-
-                          {/* Visibility */}
-                          <div className="text-left">
-                            <div className="text-[8px] text-slate-500 uppercase mb-0.5">Visibility</div>
-                            <div className="text-sm font-bold text-white">{item.visibility}%</div>
-                          </div>
-
-                          {/* Mentions */}
-                          <div className="text-left">
-                            <div className="text-[8px] text-slate-500 uppercase mb-0.5">Mentions</div>
-                            <div className="text-sm font-semibold text-white">{item.mentions}</div>
-                          </div>
-                        </div>
-                      </div>
-                    )) : (
-                      <p className="text-[10px] text-slate-500 text-center py-4">No competitor data</p>
+                        Manage list
+                      </button>
                     )}
                   </div>
-
-                  {/* View All Link */}
-                  {competitorRankingData.length > 0 && (
-                    <button
-                      onClick={() => router.push(`/brands/${brandId}/competitors`)}
-                      className="w-full text-center text-[10px] text-slate-400 hover:text-white font-medium mt-3 pt-2 border-t border-slate-800"
-                    >
-                      View all competitors
-                    </button>
-                  )}
+                  <div className="mt-4 grid gap-3">
+                    {loadingCompetitors ? (
+                      <div className="flex h-32 items-center justify-center">
+                        <div className="h-6 w-6 animate-spin rounded-full border-2 border-current border-t-transparent text-slate-400" />
+                      </div>
+                    ) : competitorRankingData.length === 0 ? (
+                      <p className={`text-center text-sm ${mutedTextClass}`}>No competitor data yet. Add competitors after your next analysis.</p>
+                    ) : (
+                      competitorRankingData.map((item) => {
+                        const emphasisClass = item.isOwn
+                          ? (isDark ? 'border-emerald-400/40 bg-emerald-400/10' : 'border-emerald-200 bg-emerald-50')
+                          : (isDark ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white')
+                        return (
+                          <div
+                            key={item.rank}
+                            className={`rounded-2xl border px-4 py-3 transition-colors shadow-sm ${emphasisClass}`}
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="flex items-center gap-3">
+                                <span className={`flex h-8 w-8 items-center justify-center rounded-full ${item.isOwn ? 'bg-emerald-500 text-white' : 'bg-slate-900 text-white'} text-sm font-semibold`}>
+                                  {item.brand.substring(0, 1).toUpperCase()}
+                                </span>
+                                <div>
+                                  <p className={`text-sm font-semibold ${strongTextClass}`}>{item.brand}</p>
+                                  <p className={`text-xs ${mutedTextClass}`}>Rank #{item.rank}</p>
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                <p className={`text-xs ${mutedTextClass}`}>Visibility</p>
+                                <p className="text-sm font-semibold text-emerald-400">{item.visibility}%</p>
+                              </div>
+                            </div>
+                            <div className={`mt-3 grid gap-3 sm:grid-cols-4 text-xs ${mutedTextClass}`}>
+                              <div>
+                                <p className="uppercase tracking-wide">Sentiment</p>
+                                <p className={`${strongTextClass} font-semibold`}>{item.sentiment}%</p>
+                              </div>
+                              <div>
+                                <p className="uppercase tracking-wide">Position</p>
+                                <p className={`${strongTextClass} font-semibold`}>{item.position > 0 ? item.position.toFixed(1) : '—'}</p>
+                              </div>
+                              <div>
+                                <p className="uppercase tracking-wide">Mentions</p>
+                                <p className={`${strongTextClass} font-semibold`}>{item.mentions}</p>
+                              </div>
+                              <div>
+                                <p className="uppercase tracking-wide">Status</p>
+                                <p className={`${strongTextClass} font-semibold`}>{item.isOwn ? 'Your brand' : 'Competitor'}</p>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+              <div>
+                <div className={panelClass}>
+                  <h2 className={`text-lg font-semibold ${strongTextClass}`}>Score breakdown</h2>
+                  <div className="mt-4 grid gap-3">
+                    {percentageMetrics.map((metric) => (
+                      <div key={metric.category} className={subPanelClass}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className={`text-sm font-semibold ${strongTextClass}`}>{metric.category}</p>
+                            <p className={`text-xs ${mutedTextClass}`}>{metric.description}</p>
+                          </div>
+                          <span className="text-xl font-semibold text-emerald-400">{metric.score}%</span>
+                        </div>
+                      </div>
+                    ))}
+                    {numericalMetrics.map((metric) => (
+                      <div key={metric.category} className={subPanelClass}>
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <p className={`text-sm font-semibold ${strongTextClass}`}>{metric.category}</p>
+                            <p className={`text-xs ${mutedTextClass}`}>{metric.description}</p>
+                          </div>
+                          <span className="text-xl font-semibold text-indigo-400">
+                            {typeof metric.value === 'number' ? metric.value : metric.value || '—'}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                    {!filteredScore && (
+                      <p className={`text-center text-sm ${mutedTextClass}`}>Run at least one analysis to populate metrics.</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {analyzeError && (
+            <div className={panelClass}>
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-red-400" />
+                <div>
+                  <p className={`text-sm font-semibold ${strongTextClass}`}>Analysis error</p>
+                  <p className={`text-sm ${mutedTextClass}`}>{analyzeError}</p>
                 </div>
               </div>
             </div>
           )}
+
+          <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-between">
+            <div className="flex items-center gap-2">
+              <span className={`text-sm font-semibold ${strongTextClass}`}>Need fresher numbers?</span>
+              <span className={`text-sm ${mutedTextClass}`}>Trigger a new run to refresh all panels.</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleAnalyze}
+              className={[
+                'group inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2',
+                isDark ? 'bg-white text-black hover:bg-slate-100 focus:ring-white/70 focus:ring-offset-slate-900' : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-900 focus:ring-offset-white',
+              ].join(' ')}
+            >
+              <Sparkles className="h-4 w-4 transition-transform group-hover:scale-110" />
+              Run new analysis
+            </button>
+          </div>
         </div>
-        </div>
-      </div>
+      </main>
     </>
   )
 }

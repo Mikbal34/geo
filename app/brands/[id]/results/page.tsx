@@ -1,105 +1,105 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
-import { useParams } from 'next/navigation'
-import Navigation from '@/components/layout/Navigation'
-import { LLMRun, LLMProvider } from '@/types/llm'
-import { Prompt } from '@/types/prompt'
-import { MessageSquare, Sparkles, ExternalLink, TrendingUp, TrendingDown, Minus, Calendar, Filter, ChevronDown } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { useParams, useRouter } from 'next/navigation'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
+import {
+  Activity,
+  ArrowLeft,
+  Calendar,
+  ExternalLink,
+  Filter,
+  MessageSquare,
+  Minus,
+  Moon,
+  Sparkles,
+  Sun,
+  TrendingDown,
+  TrendingUp,
+} from 'lucide-react'
+
+import Navigation from '@/components/layout/Navigation'
+import type { LLMRun, LLMProvider } from '@/types/llm'
+import type { Prompt } from '@/types/prompt'
 
 type TimeFilter = '24h' | '7d' | '30d' | 'custom'
 type MonthlyView = 'daily' | 'weekly'
+type Theme = 'light' | 'dark'
+
+const LLM_OPTIONS: Array<{ value: LLMProvider; label: string }> = [
+  { value: 'chatgpt', label: 'ChatGPT' },
+  { value: 'gemini', label: 'Gemini' },
+  { value: 'perplexity', label: 'Perplexity' },
+]
+
+const TIME_OPTIONS: Array<{ value: TimeFilter; label: string }> = [
+  { value: '24h', label: '24 Hours' },
+  { value: '7d', label: '7 Days' },
+  { value: '30d', label: '1 Month' },
+  { value: 'custom', label: 'Custom range' },
+]
 
 export default function AnalysisResultsPage() {
+  const router = useRouter()
   const params = useParams()
   const brandId = params.id as string
+
+  const [theme, setTheme] = useState<Theme>('light')
+  const isDark = theme === 'dark'
+
   const [llmRuns, setLlmRuns] = useState<LLMRun[]>([])
   const [prompts, setPrompts] = useState<Prompt[]>([])
-  const [loading, setLoading] = useState(true)
-  const [selectedLLMs, setSelectedLLMs] = useState<LLMProvider[]>(['chatgpt', 'gemini', 'perplexity'])
+  const [availableRuns, setAvailableRuns] = useState<any[]>([])
 
-  // Time filtering (Dashboard ile aynı)
+  const [loading, setLoading] = useState(true)
+  const [selectedLLMs, setSelectedLLMs] = useState<LLMProvider[]>([])
   const [timeFilter, setTimeFilter] = useState<TimeFilter>('24h')
-  const [isTimeFilterOpen, setIsTimeFilterOpen] = useState(false)
+  const [monthlyView, setMonthlyView] = useState<MonthlyView>('daily')
   const [startDate, setStartDate] = useState<Date | null>(null)
   const [endDate, setEndDate] = useState<Date | null>(null)
-  const [showDatePicker, setShowDatePicker] = useState(false)
-  const [monthlyView, setMonthlyView] = useState<MonthlyView>('daily')
-
-  // Analysis runs
-  const [availableRuns, setAvailableRuns] = useState<any[]>([])
-  const [isLLMDropdownOpen, setIsLLMDropdownOpen] = useState(false)
-  const timeFilterRef = useRef<HTMLDivElement>(null)
-  const llmDropdownRef = useRef<HTMLDivElement>(null)
+  const [customRangeApplied, setCustomRangeApplied] = useState(false)
   const [openPrompts, setOpenPrompts] = useState<Set<string>>(new Set())
 
   useEffect(() => {
-    fetchAvailableRuns()
-  }, [brandId, timeFilter, selectedLLMs, monthlyView, startDate, endDate])
-
-  useEffect(() => {
-    fetchPrompts()
-  }, [brandId])
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (timeFilterRef.current && !timeFilterRef.current.contains(event.target as Node)) {
-        setIsTimeFilterOpen(false)
-      }
-      if (llmDropdownRef.current && !llmDropdownRef.current.contains(event.target as Node)) {
-        setIsLLMDropdownOpen(false)
-      }
+    const storedTheme = localStorage.getItem('auth_theme')
+    if (storedTheme === 'light' || storedTheme === 'dark') {
+      setTheme(storedTheme)
     }
-    document.addEventListener('mousedown', handleClickOutside)
-    return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const fetchAvailableRuns = async () => {
-    try {
-      const params = new URLSearchParams()
-      params.append('filter', timeFilter)
+  useEffect(() => {
+    localStorage.setItem('auth_theme', theme)
+  }, [theme])
 
-      if (timeFilter === 'custom' && startDate && endDate) {
-        params.append('from', startDate.toISOString())
-        params.append('to', endDate.toISOString())
+  useEffect(() => {
+    const fetchPrompts = async () => {
+      try {
+        const res = await fetch(`/api/prompts/${brandId}`)
+        const data = await res.json()
+        setPrompts(data.prompts || [])
+      } catch (error) {
+        console.error('Error fetching prompts:', error)
       }
-
-      if (timeFilter === '30d') {
-        params.append('view', monthlyView)
-      }
-
-      if (selectedLLMs.length === 1) {
-        params.append('llm', selectedLLMs[0])
-      }
-
-      const queryString = params.toString() ? `?${params.toString()}` : ''
-      const res = await fetch(`/api/analysis-runs/${brandId}${queryString}`)
-      const data = await res.json()
-
-      if (data.success) {
-        setAvailableRuns(data.runs || [])
-        // Fetch LLM runs for all runs
-        await fetchLLMRunsForAllAnalyses(data.runs || [])
-      }
-    } catch (error) {
-      console.error('Error fetching analysis runs:', error)
     }
-  }
 
-  const fetchLLMRunsForAllAnalyses = async (runs: any[]) => {
+    if (brandId) {
+      fetchPrompts()
+    }
+  }, [brandId])
+
+  const fetchLLMRunsForAnalyses = async (runs: any[]) => {
     try {
       setLoading(true)
-      const runIds = runs.map(r => r.id).filter(Boolean).join(',')
+      const runIds = runs.map((run) => run.id).filter(Boolean)
 
-      if (!runIds) {
+      if (!runIds.length) {
         setLlmRuns([])
         setLoading(false)
         return
       }
 
-      const res = await fetch(`/api/llm-runs/${brandId}?analysis_run_ids=${runIds}`)
+      const res = await fetch(`/api/llm-runs/${brandId}?analysis_run_ids=${runIds.join(',')}`)
       const data = await res.json()
       setLlmRuns(data.llm_runs || [])
     } catch (error) {
@@ -110,27 +110,51 @@ export default function AnalysisResultsPage() {
     }
   }
 
-  const fetchPrompts = async () => {
-    try {
-      const res = await fetch(`/api/prompts/${brandId}`)
-      const data = await res.json()
-      setPrompts(data.prompts || [])
-    } catch (error) {
-      console.error('Error fetching prompts:', error)
+  useEffect(() => {
+    const fetchRuns = async () => {
+      if (!brandId) return
+      if (timeFilter === 'custom' && (!customRangeApplied || !startDate || !endDate)) {
+        return
+      }
+
+      try {
+        const urlParams = new URLSearchParams()
+        urlParams.append('filter', timeFilter)
+
+        if (timeFilter === 'custom' && startDate && endDate) {
+          urlParams.append('from', startDate.toISOString())
+          urlParams.append('to', endDate.toISOString())
+        }
+
+        if (timeFilter === '30d') {
+          urlParams.append('view', monthlyView)
+        }
+
+        if (selectedLLMs.length === 1) {
+          urlParams.append('llm', selectedLLMs[0])
+        }
+
+        const queryString = urlParams.toString() ? `?${urlParams.toString()}` : ''
+        const res = await fetch(`/api/analysis-runs/${brandId}${queryString}`)
+        const data = await res.json()
+
+        if (data.success) {
+          setAvailableRuns(data.runs || [])
+          await fetchLLMRunsForAnalyses(data.runs || [])
+        }
+      } catch (error) {
+        console.error('Error fetching analysis runs:', error)
+      }
     }
-  }
+
+    fetchRuns()
+  }, [brandId, timeFilter, selectedLLMs, monthlyView, startDate, endDate, customRangeApplied])
 
   const handleTimeFilterChange = (filter: TimeFilter) => {
     setTimeFilter(filter)
-    setIsTimeFilterOpen(false)
-
-    if (filter === 'custom') {
-      setShowDatePicker(true)
-    } else {
-      setStartDate(null)
-      setEndDate(null)
-      setShowDatePicker(false)
-    }
+    setStartDate(null)
+    setEndDate(null)
+    setCustomRangeApplied(false)
 
     if (filter === '30d') {
       setMonthlyView('daily')
@@ -139,83 +163,229 @@ export default function AnalysisResultsPage() {
 
   const handleCustomDateApply = () => {
     if (startDate && endDate) {
-      setShowDatePicker(false)
+      setCustomRangeApplied(true)
     }
   }
 
-  const getTimeFilterLabel = () => {
-    switch (timeFilter) {
-      case '24h': return '24 Hours'
-      case '7d': return '7 Days'
-      case '30d': return '1 Month'
-      case 'custom':
-        if (startDate && endDate) {
-          return `${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${endDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-        }
-        return 'Custom'
-      default: return '24 Hours'
+  useEffect(() => {
+    if (timeFilter === 'custom') {
+      setCustomRangeApplied(false)
     }
-  }
+  }, [startDate, endDate, timeFilter])
 
-  const getRunLabel = (run: any) => {
-    const date = new Date(run.created_at).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
+  const togglePrompt = (key: string) => {
+    setOpenPrompts((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
     })
-    const type = run.run_type === 'manual' ? '(Manual)' : '(Auto)'
-    return `${date} ${type}`
   }
 
-  // Filter LLM runs by selected LLMs
-  const filteredRuns = selectedLLMs.length === 0 || selectedLLMs.length === 3
-    ? llmRuns
-    : llmRuns.filter(run => selectedLLMs.includes(run.llm as LLMProvider))
-
-  // Group runs by analysis_run_id, then by prompt
-  const runsByAnalysis = availableRuns.map(analysisRun => ({
-    analysisRun,
-    runsByPrompt: prompts.map(prompt => ({
-      prompt,
-      runs: filteredRuns.filter(run =>
-        run.analysis_run_id === analysisRun.id && run.prompt_id === prompt.id
-      ),
-    })).filter(group => group.runs.length > 0)
-  })).filter(group => group.runsByPrompt.length > 0)
-
-  const getLLMColor = (llm: LLMProvider) => {
-    switch (llm) {
-      case 'chatgpt': return 'from-slate-800 to-slate-700'
-      case 'gemini': return 'from-slate-700 to-slate-600'
-      case 'perplexity': return 'from-slate-600 to-slate-500'
+  const filteredRuns = useMemo(() => {
+    if (selectedLLMs.length === 0 || selectedLLMs.length === LLM_OPTIONS.length) {
+      return llmRuns
     }
-  }
+    return llmRuns.filter((run) => selectedLLMs.includes(run.llm as LLMProvider))
+  }, [llmRuns, selectedLLMs])
 
-  const getSentimentIcon = (sentiment: string | null) => {
-    switch (sentiment) {
-      case 'positive': return <TrendingUp className="w-4 h-4 text-green-500" />
-      case 'negative': return <TrendingDown className="w-4 h-4 text-red-500" />
-      default: return <Minus className="w-4 h-4 text-gray-500" />
+  const runsByAnalysis = useMemo(() => {
+    return availableRuns
+      .map((analysisRun) => {
+        const runsByPrompt = prompts
+          .map((prompt) => ({
+            prompt,
+            runs: filteredRuns.filter(
+              (run) => run.analysis_run_id === analysisRun.id && run.prompt_id === prompt.id,
+            ),
+          }))
+          .filter((group) => group.runs.length > 0)
+
+        return {
+          analysisRun,
+          runsByPrompt,
+        }
+      })
+      .filter((group) => group.runsByPrompt.length > 0)
+  }, [availableRuns, prompts, filteredRuns])
+
+  const totalAnalyses = runsByAnalysis.length
+  const totalResponses = filteredRuns.length
+  const totalPrompts = prompts.length
+
+  const latestRun = availableRuns.length > 0 ? availableRuns[0] : null
+  const previousRun = availableRuns.length > 1 ? availableRuns[1] : null
+  const latestRunDate = latestRun?.created_at
+
+  const sentimentBreakdown = useMemo(() => {
+    return filteredRuns.reduce(
+      (acc, run) => {
+        if (run.sentiment === 'positive') {
+          acc.positive += 1
+        } else if (run.sentiment === 'negative') {
+          acc.negative += 1
+        } else {
+          acc.neutral += 1
+        }
+        return acc
+      },
+      { positive: 0, neutral: 0, negative: 0 },
+    )
+  }, [filteredRuns])
+
+  const promptsWithResponses = useMemo(() => {
+    const ids = new Set<string>()
+    filteredRuns.forEach((run) => ids.add(run.prompt_id))
+    return ids
+  }, [filteredRuns])
+
+  const averageResponseLength = useMemo(() => {
+    if (!filteredRuns.length) return 0
+    const totalWords = filteredRuns.reduce((acc, run) => {
+      if (!run.response_text) return acc
+      const words = run.response_text.trim().split(/\s+/)
+      if (words.length === 1 && words[0] === '') return acc
+      return acc + words.length
+    }, 0)
+    return Math.round(totalWords / filteredRuns.length)
+  }, [filteredRuns])
+
+  const llmBreakdown = useMemo(() => {
+    const counts: Record<LLMProvider, number> = {
+      chatgpt: 0,
+      gemini: 0,
+      perplexity: 0,
     }
-  }
+    filteredRuns.forEach((run) => {
+      counts[run.llm] += 1
+    })
+    const entries = Object.entries(counts) as Array<[LLMProvider, number]>
+    entries.sort((a, b) => b[1] - a[1])
+    return entries
+  }, [filteredRuns])
 
-  const togglePrompt = (uniqueKey: string) => {
-    const newOpenPrompts = new Set(openPrompts)
-    if (newOpenPrompts.has(uniqueKey)) {
-      newOpenPrompts.delete(uniqueKey)
-    } else {
-      newOpenPrompts.add(uniqueKey)
+  const topLLMEntry = llmBreakdown[0]
+  const positivePct = totalResponses ? Math.round((sentimentBreakdown.positive / totalResponses) * 100) : 0
+  const neutralPct = totalResponses ? Math.round((sentimentBreakdown.neutral / totalResponses) * 100) : 0
+  const negativePct = totalResponses ? Math.round((sentimentBreakdown.negative / totalResponses) * 100) : 0
+
+  const visibilityDelta = useMemo(() => {
+    if (
+      !latestRun ||
+      !previousRun ||
+      latestRun.visibility_pct === undefined ||
+      latestRun.visibility_pct === null ||
+      previousRun.visibility_pct === undefined ||
+      previousRun.visibility_pct === null
+    ) {
+      return null
     }
-    setOpenPrompts(newOpenPrompts)
-  }
+    const delta = latestRun.visibility_pct - previousRun.visibility_pct
+    return {
+      label: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pts`,
+      positive: delta >= 0,
+    }
+  }, [latestRun, previousRun])
 
-  if (loading) {
+  const sentimentDelta = useMemo(() => {
+    if (
+      !latestRun ||
+      !previousRun ||
+      latestRun.sentiment_pct === undefined ||
+      latestRun.sentiment_pct === null ||
+      previousRun.sentiment_pct === undefined ||
+      previousRun.sentiment_pct === null
+    ) {
+      return null
+    }
+    const delta = latestRun.sentiment_pct - previousRun.sentiment_pct
+    return {
+      label: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pts`,
+      positive: delta >= 0,
+    }
+  }, [latestRun, previousRun])
+
+  const positionDelta = useMemo(() => {
+    if (
+      !latestRun ||
+      !previousRun ||
+      latestRun.avg_position_raw === undefined ||
+      latestRun.avg_position_raw === null ||
+      previousRun.avg_position_raw === undefined ||
+      previousRun.avg_position_raw === null
+    ) {
+      return null
+    }
+    const delta = latestRun.avg_position_raw - previousRun.avg_position_raw
+    return {
+      label: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}`,
+      positive: delta <= 0,
+    }
+  }, [latestRun, previousRun])
+
+  const mentionsDelta = useMemo(() => {
+    if (
+      !latestRun ||
+      !previousRun ||
+      latestRun.mentions_raw_total === undefined ||
+      latestRun.mentions_raw_total === null ||
+      previousRun.mentions_raw_total === undefined ||
+      previousRun.mentions_raw_total === null
+    ) {
+      return null
+    }
+    const delta = latestRun.mentions_raw_total - previousRun.mentions_raw_total
+    return {
+      label: `${delta >= 0 ? '+' : ''}${delta}`,
+      positive: delta >= 0,
+    }
+  }, [latestRun, previousRun])
+
+  const containerClass = [
+    'relative min-h-screen px-4 pb-16 pt-12 transition-colors',
+    isDark
+      ? 'bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900'
+      : 'bg-gradient-to-br from-slate-50 via-white to-slate-100',
+  ].join(' ')
+
+  const panelClass = [
+    'rounded-3xl border p-6 shadow-lg transition-colors sm:p-8',
+    isDark ? 'border-white/10 bg-white/5 backdrop-blur-xl shadow-black/30' : 'border-slate-200 bg-white shadow-slate-200/70',
+  ].join(' ')
+
+  const subPanelClass = [
+    'rounded-2xl border p-4 transition-colors',
+    isDark ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-slate-50',
+  ].join(' ')
+
+  const chipActiveClass = isDark
+    ? 'border border-white/20 bg-slate-900 text-white'
+    : 'border border-slate-900 bg-slate-900 text-white'
+  const chipClass = isDark
+    ? 'border border-white/10 bg-white/10 text-slate-200'
+    : 'border border-slate-200 bg-white text-slate-600'
+  const mutedTextClass = isDark ? 'text-slate-400' : 'text-slate-500'
+  const strongTextClass = isDark ? 'text-white' : 'text-slate-900'
+  const dividerClass = isDark ? 'border-white/10' : 'border-slate-200'
+  const bodyTextClass = isDark ? 'text-slate-200' : 'text-slate-700'
+
+  const isAllLLMsSelected = selectedLLMs.length === 0 || selectedLLMs.length === LLM_OPTIONS.length
+
+  if (loading && !availableRuns.length) {
     return (
       <>
-        <Navigation />
-        <div className="min-h-screen bg-black flex items-center justify-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-4 border-slate-700 border-t-white" />
+        <Navigation theme={theme} />
+        <div className={containerClass}>
+          <div className="flex min-h-[60vh] items-center justify-center">
+            <div
+              className={`h-10 w-10 animate-spin rounded-full border-4 ${
+                isDark ? 'border-white/20 border-t-white' : 'border-slate-300 border-t-slate-900'
+              }`}
+            />
+          </div>
         </div>
       </>
     )
@@ -223,374 +393,695 @@ export default function AnalysisResultsPage() {
 
   return (
     <>
-      <Navigation />
-      <div className="min-h-screen bg-black py-12 px-4">
-        <div className="max-w-7xl mx-auto">
-          {/* Header */}
-          <div className="mb-10">
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 bg-[#171717] border border-slate-800 flex items-center justify-center">
-                  <MessageSquare className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <h1 className="text-xl font-bold text-white">
-                    Analysis Results
-                  </h1>
-                  <p className="text-sm text-slate-400 mt-0.5">
-                    {prompts.length} prompts × 3 LLMs = {llmRuns.length} responses
+      <Navigation theme={theme} />
+      <main className={containerClass}>
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => router.push(`/brands/${brandId}/dashboard`)}
+                className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors hover:opacity-90`}
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Dashboard
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push(`/brands/${brandId}/settings`)}
+                className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors hover:opacity-90`}
+              >
+                Settings
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))}
+              className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+            >
+              {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              {isDark ? 'Light mode' : 'Dark mode'}
+            </button>
+          </div>
+
+          <div className={`${panelClass} space-y-6`}>
+            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex items-start gap-4">
+                <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg">
+                  <Activity className="h-5 w-5" />
+                </span>
+                <div className="space-y-2">
+                  <span
+                    className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide`}
+                  >
+                    Run explorer
+                  </span>
+                  <h1 className={`text-3xl font-semibold ${strongTextClass}`}>Analysis results</h1>
+                  <p className={`text-sm ${mutedTextClass}`}>
+                    Track how each LLM responded for your prompts, compare sentiment trends, and audit source references.
                   </p>
                 </div>
               </div>
-
-              {/* Filters */}
-              <div className="flex gap-2">
-              {/* Time Filter */}
-              <div className="relative" ref={timeFilterRef}>
-                <button
-                  onClick={() => setIsTimeFilterOpen(!isTimeFilterOpen)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#171717] border border-slate-800 text-xs font-medium text-slate-400 hover:bg-[#0a0a0a] transition-colors"
-                >
-                  <Calendar className="w-3.5 h-3.5" />
-                  {getTimeFilterLabel()}
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isTimeFilterOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isTimeFilterOpen && (
-                  <div className="absolute left-0 mt-1 w-40 bg-[#171717] border border-slate-800 shadow-lg z-10">
-                    <button
-                      onClick={() => handleTimeFilterChange('24h')}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-[#0a0a0a] text-slate-300 ${
-                        timeFilter === '24h' ? 'bg-[#0a0a0a] font-medium text-white' : ''
-                      }`}
-                    >
-                      24 Hours
-                    </button>
-                    <button
-                      onClick={() => handleTimeFilterChange('7d')}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-[#0a0a0a] text-slate-300 ${
-                        timeFilter === '7d' ? 'bg-[#0a0a0a] font-medium text-white' : ''
-                      }`}
-                    >
-                      7 Days
-                    </button>
-                    <button
-                      onClick={() => handleTimeFilterChange('30d')}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-[#0a0a0a] text-slate-300 ${
-                        timeFilter === '30d' ? 'bg-[#0a0a0a] font-medium text-white' : ''
-                      }`}
-                    >
-                      1 Month
-                    </button>
-                    <button
-                      onClick={() => handleTimeFilterChange('custom')}
-                      className={`w-full text-left px-4 py-2 text-sm hover:bg-[#0a0a0a] text-slate-300 ${
-                        timeFilter === 'custom' ? 'bg-[#0a0a0a] font-medium text-white' : ''
-                      }`}
-                    >
-                      Custom
-                    </button>
-                  </div>
-                )}
+              <div className={`${subPanelClass} w-full space-y-2 sm:max-w-xs`}>
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Latest completed run</p>
+                <p className={`text-base font-semibold ${strongTextClass}`}>
+                  {latestRunDate ? new Date(latestRunDate).toLocaleString() : 'Awaiting analyses'}
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>Filters reflect this time window and model selection.</p>
               </div>
+            </div>
 
-              {/* 30d Daily/Weekly Toggle */}
-              {timeFilter === '30d' && (
-                <div className="flex items-center gap-1 px-1.5 py-1.5 bg-[#171717] border border-slate-800">
-                  <button
-                    onClick={() => setMonthlyView('daily')}
-                    className={`px-2 py-1 text-[10px] font-medium transition-colors ${
-                      monthlyView === 'daily'
-                        ? 'bg-white text-black'
-                        : 'bg-transparent text-slate-500 hover:bg-slate-800'
-                    }`}
-                  >
-                    Daily
-                  </button>
-                  <button
-                    onClick={() => setMonthlyView('weekly')}
-                    className={`px-2 py-1 text-[10px] font-medium transition-colors ${
-                      monthlyView === 'weekly'
-                        ? 'bg-white text-black'
-                        : 'bg-transparent text-slate-500 hover:bg-slate-800'
-                    }`}
-                  >
-                    Weekly
-                  </button>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className={`${subPanelClass} space-y-2`}>
+                <div className="flex items-center justify-between">
+                  <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Visibility score</p>
+                  {visibilityDelta ? (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        visibilityDelta.positive
+                          ? 'bg-emerald-500/15 text-emerald-500'
+                          : 'bg-rose-500/15 text-rose-500'
+                      }`}
+                    >
+                      {visibilityDelta.label}
+                    </span>
+                  ) : (
+                    <span className={`text-[10px] ${mutedTextClass}`}>—</span>
+                  )}
                 </div>
-              )}
-
-              {/* LLM Checkbox Filter */}
-              <div className="relative" ref={llmDropdownRef}>
-                <button
-                  onClick={() => setIsLLMDropdownOpen(!isLLMDropdownOpen)}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#171717] border border-slate-800 text-xs font-medium text-slate-400 hover:bg-[#0a0a0a] transition-colors"
-                >
-                  <Filter className="w-3.5 h-3.5" />
-                  {selectedLLMs.length === 0 || selectedLLMs.length === 3
-                    ? 'All LLMs'
-                    : selectedLLMs.length === 1
-                    ? selectedLLMs[0] === 'chatgpt' ? 'ChatGPT' : selectedLLMs[0] === 'gemini' ? 'Gemini' : 'Perplexity'
-                    : `${selectedLLMs.length} LLMs`
-                  }
-                  <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isLLMDropdownOpen ? 'rotate-180' : ''}`} />
-                </button>
-
-                {isLLMDropdownOpen && (
-                  <div className="absolute right-0 mt-1 w-48 bg-[#171717] border border-slate-800 shadow-lg z-10 p-2">
-                    <div className="text-xs font-medium text-slate-500 uppercase px-2 py-1 mb-1">
-                      Select LLMs
-                    </div>
-
-                    {/* ChatGPT Checkbox */}
-                    <label className="flex items-center gap-2 px-2 py-2 hover:bg-[#0a0a0a] rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedLLMs.includes('chatgpt')}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedLLMs([...selectedLLMs, 'chatgpt'])
-                          } else {
-                            setSelectedLLMs(selectedLLMs.filter(llm => llm !== 'chatgpt'))
-                          }
-                        }}
-                        className="w-4 h-4 text-indigo-600 border-slate-700 rounded focus:ring-indigo-500"
-                      />
-                      <span className="text-sm text-slate-300">ChatGPT</span>
-                    </label>
-
-                    {/* Gemini Checkbox */}
-                    <label className="flex items-center gap-2 px-2 py-2 hover:bg-[#0a0a0a] rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedLLMs.includes('gemini')}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedLLMs([...selectedLLMs, 'gemini'])
-                          } else {
-                            setSelectedLLMs(selectedLLMs.filter(llm => llm !== 'gemini'))
-                          }
-                        }}
-                        className="w-4 h-4 text-indigo-600 border-slate-700 rounded focus:ring-indigo-500"
-                      />
-                      <span className="text-sm text-slate-300">Gemini</span>
-                    </label>
-
-                    {/* Perplexity Checkbox */}
-                    <label className="flex items-center gap-2 px-2 py-2 hover:bg-[#0a0a0a] rounded cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={selectedLLMs.includes('perplexity')}
-                        onChange={(e) => {
-                          if (e.target.checked) {
-                            setSelectedLLMs([...selectedLLMs, 'perplexity'])
-                          } else {
-                            setSelectedLLMs(selectedLLMs.filter(llm => llm !== 'perplexity'))
-                          }
-                        }}
-                        className="w-4 h-4 text-indigo-600 border-slate-700 rounded focus:ring-indigo-500"
-                      />
-                      <span className="text-sm text-slate-300">Perplexity</span>
-                    </label>
-
-                    <div className="border-t border-slate-800 mt-2 pt-2">
-                      <button
-                        onClick={() => setSelectedLLMs(['chatgpt', 'gemini', 'perplexity'])}
-                        className="w-full text-left px-2 py-1.5 text-xs text-slate-400 hover:bg-[#0a0a0a] rounded"
-                      >
-                        Select All
-                      </button>
-                    </div>
-                  </div>
-                )}
+                <p className={`text-2xl font-semibold ${strongTextClass}`}>
+                  {latestRun?.visibility_pct !== undefined && latestRun?.visibility_pct !== null
+                    ? `${Math.round(latestRun.visibility_pct)}%`
+                    : '—'}
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>Share of search surface captured by brand content.</p>
               </div>
+
+              <div className={`${subPanelClass} space-y-2`}>
+                <div className="flex items-center justify-between">
+                  <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Sentiment</p>
+                  {sentimentDelta ? (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        sentimentDelta.positive
+                          ? 'bg-emerald-500/15 text-emerald-500'
+                          : 'bg-rose-500/15 text-rose-500'
+                      }`}
+                    >
+                      {sentimentDelta.label}
+                    </span>
+                  ) : (
+                    <span className={`text-[10px] ${mutedTextClass}`}>—</span>
+                  )}
+                </div>
+                <p className={`text-2xl font-semibold ${strongTextClass}`}>
+                  {latestRun?.sentiment_pct !== undefined && latestRun?.sentiment_pct !== null
+                    ? `${Math.round(latestRun.sentiment_pct)}%`
+                    : '—'}
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>Overall positive tone detected in the latest run.</p>
+              </div>
+
+              <div className={`${subPanelClass} space-y-2`}>
+                <div className="flex items-center justify-between">
+                  <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Avg rank</p>
+                  {positionDelta ? (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        positionDelta.positive
+                          ? 'bg-emerald-500/15 text-emerald-500'
+                          : 'bg-rose-500/15 text-rose-500'
+                      }`}
+                    >
+                      {positionDelta.label}
+                    </span>
+                  ) : (
+                    <span className={`text-[10px] ${mutedTextClass}`}>—</span>
+                  )}
+                </div>
+                <p className={`text-2xl font-semibold ${strongTextClass}`}>
+                  {latestRun?.avg_position_raw !== undefined && latestRun?.avg_position_raw !== null
+                    ? `#${latestRun.avg_position_raw.toFixed(1)}`
+                    : '—'}
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>Lower is better. Benchmarks across captured mentions.</p>
+              </div>
+
+              <div className={`${subPanelClass} space-y-2`}>
+                <div className="flex items-center justify-between">
+                  <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Mentions</p>
+                  {mentionsDelta ? (
+                    <span
+                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                        mentionsDelta.positive
+                          ? 'bg-emerald-500/15 text-emerald-500'
+                          : 'bg-rose-500/15 text-rose-500'
+                      }`}
+                    >
+                      {mentionsDelta.label}
+                    </span>
+                  ) : (
+                    <span className={`text-[10px] ${mutedTextClass}`}>—</span>
+                  )}
+                </div>
+                <p className={`text-2xl font-semibold ${strongTextClass}`}>
+                  {latestRun?.mentions_raw_total !== undefined && latestRun?.mentions_raw_total !== null
+                    ? latestRun.mentions_raw_total.toLocaleString()
+                    : '—'}
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>Raw brand mentions captured across all prompts.</p>
               </div>
             </div>
           </div>
 
-          {/* Custom Date Picker Modal */}
-          {showDatePicker && (
-            <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50">
-              <div className="bg-[#171717] border border-slate-800 shadow-2xl p-6 max-w-md w-full mx-4">
-                <h3 className="text-lg font-bold text-white mb-4">Select Date Range</h3>
+          <div className="grid gap-6 lg:grid-cols-[1.8fr_1fr]">
+            <div className={`${panelClass} space-y-6`}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h2 className={`text-sm font-semibold ${strongTextClass}`}>Filters</h2>
+                  <p className={`text-xs ${mutedTextClass}`}>Tune the model mix and historical window for this view.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedLLMs([])}
+                  className={`${isAllLLMsSelected ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors hover:opacity-90`}
+                  disabled={isAllLLMsSelected}
+                >
+                  <Filter className="h-3.5 w-3.5" />
+                  All models
+                </button>
+              </div>
 
-                <div className="space-y-4 mb-6">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className={`${subPanelClass} space-y-4`}>
                   <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-2">Start Date</label>
-                    <DatePicker
-                      selected={startDate}
-                      onChange={(date) => setStartDate(date)}
-                      selectsStart
-                      startDate={startDate}
-                      endDate={endDate}
-                      maxDate={new Date()}
-                      className="w-full px-3 py-2 bg-[#0a0a0a] border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      dateFormat="MMM d, yyyy"
-                    />
+                    <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>LLM selection</p>
+                    <p className={`text-sm ${mutedTextClass}`}>Compare responses across supported providers.</p>
                   </div>
-
-                  <div>
-                    <label className="block text-sm font-medium text-slate-400 mb-2">End Date</label>
-                    <DatePicker
-                      selected={endDate}
-                      onChange={(date) => setEndDate(date)}
-                      selectsEnd
-                      startDate={startDate}
-                      endDate={endDate}
-                      minDate={startDate ?? undefined}
-                      maxDate={new Date()}
-                      className="w-full px-3 py-2 bg-[#0a0a0a] border border-slate-800 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      dateFormat="MMM d, yyyy"
-                    />
+                  <div className="flex flex-wrap gap-2">
+                    {LLM_OPTIONS.map((option) => {
+                      const active = isAllLLMsSelected || selectedLLMs.includes(option.value)
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => {
+                            setSelectedLLMs((prev) => {
+                              const prevAll = prev.length === 0 || prev.length === LLM_OPTIONS.length
+                              if (prevAll) {
+                                return [option.value]
+                              }
+                              if (prev.includes(option.value)) {
+                                const next = prev.filter((item) => item !== option.value)
+                                return next.length ? next : []
+                              }
+                              return [...prev, option.value]
+                            })
+                          }}
+                          className={`${active ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                        >
+                          <span className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${getLLMColor(option.value)}`} />
+                          {option.label}
+                        </button>
+                      )
+                    })}
                   </div>
                 </div>
 
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => {
-                      setShowDatePicker(false)
-                      setTimeFilter('24h')
-                      setStartDate(null)
-                      setEndDate(null)
-                    }}
-                    className="flex-1 px-4 py-2 border border-slate-800 text-sm font-medium text-slate-300 hover:bg-[#0a0a0a]"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleCustomDateApply}
-                    disabled={!startDate || !endDate}
-                    className="flex-1 px-4 py-2 bg-white text-black text-sm font-medium hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    Apply
-                  </button>
+                <div className={`${subPanelClass} space-y-4`}>
+                  <div>
+                    <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Time window</p>
+                    <p className={`text-sm ${mutedTextClass}`}>Shift the time horizon to explore historical runs.</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {TIME_OPTIONS.map((option) => {
+                      const active = timeFilter === option.value
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() => handleTimeFilterChange(option.value)}
+                          className={`${active ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                        >
+                          {option.label}
+                        </button>
+                      )
+                    })}
+                  </div>
+                  {timeFilter === '30d' && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`text-xs font-medium ${mutedTextClass}`}>Granularity:</span>
+                      <div className={`inline-flex rounded-full border px-1 py-1 ${dividerClass}`}>
+                        <button
+                          type="button"
+                          onClick={() => setMonthlyView('daily')}
+                          className={`${monthlyView === 'daily' ? chipActiveClass : chipClass} rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                        >
+                          Daily
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setMonthlyView('weekly')}
+                          className={`${monthlyView === 'weekly' ? chipActiveClass : chipClass} rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                        >
+                          Weekly
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {timeFilter === 'custom' && (
+                    <div className={`${subPanelClass} space-y-4`}>
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className={`mb-2 block text-xs font-medium ${mutedTextClass}`}>Start date</label>
+                          <DatePicker
+                            selected={startDate}
+                            onChange={(date) => setStartDate(date)}
+                            selectsStart
+                            startDate={startDate}
+                            endDate={endDate}
+                            maxDate={new Date()}
+                            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                            placeholderText="Select start"
+                          />
+                        </div>
+                        <div>
+                          <label className={`mb-2 block text-xs font-medium ${mutedTextClass}`}>End date</label>
+                          <DatePicker
+                            selected={endDate}
+                            onChange={(date) => setEndDate(date)}
+                            selectsEnd
+                            startDate={startDate}
+                            endDate={endDate}
+                            minDate={startDate ?? undefined}
+                            maxDate={new Date()}
+                            className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                            placeholderText="Select end"
+                          />
+                        </div>
+                      </div>
+                      <div className="flex justify-end gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleTimeFilterChange('24h')}
+                          className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleCustomDateApply}
+                          disabled={!startDate || !endDate}
+                          className={`${chipActiveClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors disabled:opacity-50`}
+                        >
+                          Apply range
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
-          )}
 
-          {/* Results Grid - Grouped by Analysis Run */}
-          {runsByAnalysis.map(({ analysisRun, runsByPrompt }) => (
-            <div key={analysisRun.id} className="mb-12">
-              {/* Analysis Run Header */}
-              <div className="mb-6 pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-3">
-                  <Calendar className="w-5 h-5 text-slate-400" />
-                  <h2 className="text-xl font-bold text-white">
-                    {new Date(analysisRun.created_at).toLocaleDateString('en-US', {
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </h2>
-                  <span className="px-2 py-1 text-xs font-medium bg-slate-800 text-slate-300">
-                    {analysisRun.run_type === 'manual' ? 'Manual' : 'Auto'}
-                  </span>
+            <div className={`${panelClass} space-y-4`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className={`text-sm font-semibold ${strongTextClass}`}>Quick insights</h2>
+                  <p className={`text-xs ${mutedTextClass}`}>Snapshot of engagement across the selected filters.</p>
                 </div>
+                <span
+                  className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide`}
+                >
+                  {totalResponses} responses
+                </span>
               </div>
 
-              {/* Prompts for this Analysis */}
-              {runsByPrompt.map(({ prompt, runs }) => {
-                const uniqueKey = `${analysisRun.id}-${prompt.id}`
-                const isOpen = openPrompts.has(uniqueKey)
-                return (
-                  <div key={uniqueKey} className="mb-4">
-                    <div className="bg-[#171717] shadow-xl border border-slate-800">
-                      {/* Prompt Question - Clickable Header */}
-                      <button
-                        onClick={() => togglePrompt(uniqueKey)}
-                        className="w-full p-6 flex items-center justify-between hover:bg-[#0a0a0a] transition-colors"
-                      >
-                        <div className="flex items-start gap-3 flex-1 text-left">
-                          <Sparkles className="w-5 h-5 text-white mt-0.5 flex-shrink-0" />
-                          <div className="flex-1">
-                            <h3 className="text-sm font-bold text-white mb-1">Prompt</h3>
-                            <p className="text-slate-300 text-sm leading-relaxed">{prompt.prompt_text}</p>
-                          </div>
+              <div className="space-y-3">
+                <div className={`${subPanelClass} flex items-start gap-3`}>
+                  <Sparkles className="h-5 w-5 text-amber-400" />
+                  <div>
+                    <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Prompts engaged</p>
+                    <p className={`text-sm font-semibold ${strongTextClass}`}>
+                      {promptsWithResponses.size} / {totalPrompts || '—'}
+                    </p>
+                    <p className={`text-xs ${mutedTextClass}`}>Active prompts with at least one response this period.</p>
+                  </div>
+                </div>
+
+                <div className={`${subPanelClass} flex items-start gap-3`}>
+                  <MessageSquare className="h-5 w-5 text-sky-400" />
+                  <div>
+                    <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Avg response length</p>
+                    <p className={`text-sm font-semibold ${strongTextClass}`}>
+                      {averageResponseLength ? `${averageResponseLength} words` : '—'}
+                    </p>
+                    <p className={`text-xs ${mutedTextClass}`}>Textual depth captured across generated answers.</p>
+                  </div>
+                </div>
+
+                <div className={`${subPanelClass} flex items-start gap-3`}>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
+                    <TrendingUp className="h-4 w-4" />
+                  </div>
+                  <div className="flex-1 space-y-1">
+                    <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Sentiment mix</p>
+                    {totalResponses ? (
+                      <div className="grid grid-cols-3 gap-2 text-center">
+                        <div className="rounded-xl bg-emerald-500/10 py-2">
+                          <p className={`text-sm font-semibold text-emerald-400`}>{positivePct}%</p>
+                          <p className={`text-[11px] ${mutedTextClass}`}>Positive</p>
                         </div>
-                        <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform flex-shrink-0 ml-3 ${isOpen ? 'rotate-180' : ''}`} />
-                      </button>
+                        <div className="rounded-xl bg-slate-500/10 py-2">
+                          <p className={`text-sm font-semibold ${mutedTextClass}`}>{neutralPct}%</p>
+                          <p className={`text-[11px] ${mutedTextClass}`}>Neutral</p>
+                        </div>
+                        <div className="rounded-xl bg-rose-500/10 py-2">
+                          <p className={`text-sm font-semibold text-rose-400`}>{negativePct}%</p>
+                          <p className={`text-[11px] ${mutedTextClass}`}>Negative</p>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className={`text-xs ${mutedTextClass}`}>Sentiment data appears once analyses are available.</p>
+                    )}
+                  </div>
+                </div>
 
-                      {/* LLM Responses - Collapsible */}
-                      {isOpen && (
-                        <div className="border-t border-slate-800 p-6">
-                          <div className="space-y-4">
-                      {runs.map((run) => (
-                        <div key={run.id} className="border border-slate-800 p-5 hover:border-slate-700 transition-colors bg-[#0a0a0a]">
-                          {/* LLM Header */}
-                          <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center gap-2">
-                              <div className={`px-3 py-1.5 bg-gradient-to-r ${getLLMColor(run.llm)} text-white text-xs font-bold`}>
-                                {run.llm.toUpperCase()}
-                              </div>
-                              {getSentimentIcon(run.sentiment)}
-                              <span className="text-xs text-slate-400 capitalize">
-                                {run.sentiment || 'neutral'} sentiment
-                              </span>
-                            </div>
-                          </div>
+                <div className={`${subPanelClass} flex items-start gap-3`}>
+                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400">
+                    <Activity className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Leading model</p>
+                    <p className={`text-sm font-semibold ${strongTextClass}`}>
+                      {topLLMEntry && topLLMEntry[1] > 0 ? (
+                        <>
+                          {LLM_OPTIONS.find((option) => option.value === topLLMEntry[0])?.label}{' '}
+                          <span className={`text-xs ${mutedTextClass}`}>
+                            ({Math.round((topLLMEntry[1] / (totalResponses || 1)) * 100)}%)
+                          </span>
+                        </>
+                      ) : (
+                        'Awaiting data'
+                      )}
+                    </p>
+                    <p className={`text-xs ${mutedTextClass}`}>Highest share of responses within the current filters.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-                          {/* Response Text */}
-                          <div className="mb-4">
-                            <p className="text-slate-300 text-sm leading-relaxed whitespace-pre-wrap">
-                              {run.response_text}
+          <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
+            <section className={`${panelClass} space-y-6`}>
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <h2 className={`text-sm font-semibold ${strongTextClass}`}>Detailed responses</h2>
+                  <p className={`text-xs ${mutedTextClass}`}>Expand prompts to review per-model answers and source links.</p>
+                </div>
+                {totalAnalyses > 1 && (
+                  <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold`}>
+                    {totalAnalyses} analyses
+                  </span>
+                )}
+              </div>
+
+              {runsByAnalysis.length === 0 ? (
+                <div className={`${subPanelClass} flex flex-col items-center gap-3 py-12 text-center`}>
+                  <Sparkles className="h-6 w-6 text-amber-400" />
+                  <p className={`text-sm font-semibold ${strongTextClass}`}>No responses yet</p>
+                  <p className={`text-xs ${mutedTextClass}`}>
+                    Trigger a new analysis from the dashboard to populate this view.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  {runsByAnalysis.map(({ analysisRun, runsByPrompt }) => {
+                    const runCreatedAt = analysisRun.created_at ? new Date(analysisRun.created_at).toLocaleString() : null
+                    const summaryItems = [
+                      {
+                        label: 'Visibility',
+                        value:
+                          analysisRun.visibility_pct !== undefined && analysisRun.visibility_pct !== null
+                            ? `${Math.round(analysisRun.visibility_pct)}%`
+                            : '—',
+                      },
+                      {
+                        label: 'Sentiment',
+                        value:
+                          analysisRun.sentiment_pct !== undefined && analysisRun.sentiment_pct !== null
+                            ? `${Math.round(analysisRun.sentiment_pct)}%`
+                            : '—',
+                      },
+                      {
+                        label: 'Avg rank',
+                        value:
+                          analysisRun.avg_position_raw !== undefined && analysisRun.avg_position_raw !== null
+                            ? `#${Number(analysisRun.avg_position_raw).toFixed(1)}`
+                            : '—',
+                      },
+                      {
+                        label: 'Mentions',
+                        value:
+                          analysisRun.mentions_raw_total !== undefined && analysisRun.mentions_raw_total !== null
+                            ? Number(analysisRun.mentions_raw_total).toLocaleString()
+                            : '—',
+                      },
+                    ]
+
+                    return (
+                      <div key={analysisRun.id} className={`${subPanelClass} space-y-4`}>
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                          <div>
+                            <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Analysis run</p>
+                            <p className={`text-sm font-semibold ${strongTextClass}`}>
+                              {runCreatedAt ?? 'Completed run'}
+                            </p>
+                            <p className={`text-xs ${mutedTextClass}`}>
+                              {analysisRun.aggregation_type
+                                ? `${analysisRun.aggregation_type === 'weekly' ? 'Weekly aggregate' : 'Daily aggregate'} • ${
+                                    analysisRun.runs_count || 1
+                                  } run${analysisRun.runs_count === 1 ? '' : 's'}`
+                                : 'Individual analysis'}
                             </p>
                           </div>
-
-                          {/* Sources */}
-                          {run.sources && run.sources.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-slate-800">
-                              <h4 className="text-xs font-bold text-white mb-2">
-                                Sources ({run.sources.length})
-                              </h4>
-                              <div className="space-y-1.5">
-                                {run.sources.slice(0, 5).map((source, idx) => (
-                                  <a
-                                    key={idx}
-                                    href={source.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="flex items-center gap-2 text-xs text-slate-400 hover:text-white hover:underline"
-                                  >
-                                    <ExternalLink className="w-3 h-3" />
-                                    <span className="truncate">
-                                      {source.title || source.url}
-                                    </span>
-                                    {source.rank && (
-                                      <span className="ml-auto text-xs bg-slate-800 px-1.5 py-0.5">
-                                        #{source.rank}
-                                      </span>
-                                    )}
-                                  </a>
-                                ))}
+                          <div className="grid grid-cols-2 gap-2 text-right sm:text-left md:grid-cols-4">
+                            {summaryItems.map((item) => (
+                              <div key={item.label} className="rounded-xl bg-white/5 px-3 py-2 text-left">
+                                <p className={`text-[11px] uppercase tracking-wide ${mutedTextClass}`}>{item.label}</p>
+                                <p className={`text-sm font-semibold ${strongTextClass}`}>{item.value}</p>
                               </div>
-                            </div>
-                          )}
-                        </div>
-                      ))}
+                            ))}
                           </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          ))}
 
-          {filteredRuns.length === 0 && (
-            <div className="bg-[#171717] shadow-xl border border-slate-800 p-12 text-center">
-              <MessageSquare className="w-16 h-16 text-slate-700 mx-auto mb-4" />
-              <h3 className="text-xl font-bold text-white mb-2">No Results Yet</h3>
-              <p className="text-slate-400">
-                Run an analysis to see LLM responses here
-              </p>
-            </div>
-          )}
+                        <div className="space-y-3">
+                          {runsByPrompt.map(({ prompt, runs }) => {
+                            const key = `${analysisRun.id}-${prompt.id}`
+                            const isOpen = openPrompts.has(key)
+                            return (
+                              <div key={key} className={`${subPanelClass}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => togglePrompt(key)}
+                                  className="flex w-full items-center justify-between gap-4 text-left"
+                                >
+                                  <div className="flex items-start gap-3">
+                                    <Sparkles className="h-5 w-5 text-amber-400" />
+                                    <div>
+                                      <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Prompt</p>
+                                      <p className={`text-sm font-semibold ${strongTextClass}`}>{prompt.prompt_text}</p>
+                                    </div>
+                                  </div>
+                                  <span className={`text-xs font-semibold ${mutedTextClass}`}>
+                                    {runs.length} response{runs.length === 1 ? '' : 's'}
+                                  </span>
+                                </button>
+
+                                {isOpen && (
+                                  <div className={`mt-4 space-y-4 border-t pt-4 ${dividerClass}`}>
+                                    {runs.map((run) => (
+                                      <div
+                                        key={run.id}
+                                        className={`rounded-2xl border p-4 transition-colors ${
+                                          isDark ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'
+                                        }`}
+                                      >
+                                        <div className="flex flex-wrap items-center justify-between gap-3">
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <span
+                                              className={`inline-flex items-center gap-2 rounded-full bg-gradient-to-r ${getLLMColor(
+                                                run.llm,
+                                              )} px-3 py-1 text-xs font-semibold text-white`}
+                                            >
+                                              {run.llm.toUpperCase()}
+                                            </span>
+                                            <span className={`text-xs ${mutedTextClass} capitalize`}>
+                                              {run.sentiment || 'neutral'}
+                                            </span>
+                                            {getSentimentIcon(run.sentiment)}
+                                          </div>
+                                          <span className={`text-xs ${mutedTextClass}`}>
+                                            {new Date(run.created_at).toLocaleString()}
+                                          </span>
+                                        </div>
+
+                                        <p className={`mt-3 text-sm leading-relaxed ${bodyTextClass}`}>
+                                          {run.response_text}
+                                        </p>
+
+                                        {run.sources && run.sources.length > 0 && (
+                                          <div className={`mt-4 border-t pt-3 ${dividerClass}`}>
+                                            <p className={`text-xs font-semibold ${strongTextClass}`}>Sources</p>
+                                            <div className="mt-2 space-y-1.5">
+                                              {run.sources.slice(0, 5).map((source, idx) => (
+                                                <a
+                                                  key={idx}
+                                                  href={source.url}
+                                                  target="_blank"
+                                                  rel="noopener noreferrer"
+                                                  className={`flex items-center gap-2 text-xs transition-colors ${
+                                                    isDark
+                                                      ? 'text-slate-300 hover:text-white'
+                                                      : 'text-slate-600 hover:text-slate-900'
+                                                  }`}
+                                                >
+                                                  <ExternalLink className="h-3 w-3" />
+                                                  <span className="truncate">{source.title || source.url}</span>
+                                                  {source.rank && (
+                                                    <span
+                                                      className={`${chipClass} ml-auto inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold`}
+                                                    >
+                                                      #{source.rank}
+                                                    </span>
+                                                  )}
+                                                </a>
+                                              ))}
+                                            </div>
+                                          </div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </section>
+
+            <aside className="flex flex-col gap-6">
+              <div className={`${panelClass} space-y-4`}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className={`text-sm font-semibold ${strongTextClass}`}>Analysis timeline</h2>
+                    <p className={`text-xs ${mutedTextClass}`}>Recent runs aligned with the current filters.</p>
+                  </div>
+                  <Calendar className={`h-4 w-4 ${mutedTextClass}`} />
+                </div>
+                {availableRuns.length === 0 ? (
+                  <p className={`text-xs ${mutedTextClass}`}>Run history will appear after your first analysis.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {availableRuns.slice(0, 6).map((run: any) => (
+                      <div
+                        key={run.id}
+                        className={`${subPanelClass} flex items-start justify-between gap-4`}
+                      >
+                        <div>
+                          <p className={`text-sm font-semibold ${strongTextClass}`}>
+                            {run.created_at ? new Date(run.created_at).toLocaleString() : 'Completed run'}
+                          </p>
+                          <p className={`text-xs ${mutedTextClass}`}>
+                            {run.aggregation_type
+                              ? `${run.aggregation_type === 'weekly' ? 'Weekly aggregate' : 'Daily aggregate'}${
+                                  run.runs_count ? ` • ${run.runs_count} runs` : ''
+                                }`
+                              : 'Individual analysis'}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-sm font-semibold ${strongTextClass}`}>
+                            {run.visibility_pct !== undefined && run.visibility_pct !== null
+                              ? `${Math.round(run.visibility_pct)}% vis`
+                              : '—'}
+                          </p>
+                          <p className={`text-xs ${mutedTextClass}`}>
+                            {run.sentiment_pct !== undefined && run.sentiment_pct !== null
+                              ? `${Math.round(run.sentiment_pct)}% pos`
+                              : 'Sentiment pending'}
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className={`${panelClass} space-y-4`}>
+                <div>
+                  <h2 className={`text-sm font-semibold ${strongTextClass}`}>Model distribution</h2>
+                  <p className={`text-xs ${mutedTextClass}`}>How many responses each provider produced.</p>
+                </div>
+                {totalResponses === 0 ? (
+                  <p className={`text-xs ${mutedTextClass}`}>Run analyses to populate provider-level metrics.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {llmBreakdown.map(([provider, count]) => {
+                      const label = LLM_OPTIONS.find((option) => option.value === provider)?.label ?? provider
+                      const percentage = totalResponses ? Math.round((count / totalResponses) * 100) : 0
+                      return (
+                        <div key={provider} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className={`${strongTextClass}`}>{label}</span>
+                            <span className={mutedTextClass}>
+                              {count} ({percentage}%)
+                            </span>
+                          </div>
+                          <div className="h-1.5 overflow-hidden rounded-full bg-slate-200/60">
+                            <div
+                              className={`h-full bg-gradient-to-r ${getLLMColor(provider)} transition-all`}
+                              style={{ width: `${percentage}%` }}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            </aside>
+          </div>
         </div>
-      </div>
+      </main>
     </>
   )
+}
+
+function getLLMColor(llm: LLMProvider) {
+  switch (llm) {
+    case 'chatgpt':
+      return 'from-emerald-500 to-teal-400'
+    case 'gemini':
+      return 'from-blue-500 to-sky-400'
+    case 'perplexity':
+      return 'from-purple-500 to-pink-500'
+    default:
+      return 'from-slate-600 to-slate-500'
+  }
+}
+
+function getSentimentIcon(sentiment: string | null) {
+  switch (sentiment) {
+    case 'positive':
+      return <TrendingUp className="h-4 w-4 text-emerald-400" />
+    case 'negative':
+      return <TrendingDown className="h-4 w-4 text-rose-400" />
+    default:
+      return <Minus className="h-4 w-4 text-slate-400" />
+  }
 }

@@ -1,16 +1,25 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 
-export default function CompetitorForm({ brandId, onAdded }: { brandId: string, onAdded: () => void }) {
+type Theme = 'light' | 'dark'
+
+interface CompetitorFormProps {
+  brandId: string
+  onAdded: () => void
+  theme?: Theme
+}
+
+export default function CompetitorForm({ brandId, onAdded, theme = 'dark' }: CompetitorFormProps) {
   const [formData, setFormData] = useState({
     competitor_name: '',
     competitor_domain: '',
     region: '',
   })
   const [loading, setLoading] = useState(false)
+  const isDark = theme === 'dark'
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
@@ -27,6 +36,20 @@ export default function CompetitorForm({ brandId, onAdded }: { brandId: string, 
     }
   }
 
+  const inputClass = [
+    'w-full rounded-xl border px-4 py-3 transition-colors shadow-sm focus:outline-none focus:ring-2',
+    isDark
+      ? 'border-[#2a2a2a] bg-[#0a0a0a] text-white placeholder-slate-500 focus:border-slate-500 focus:ring-slate-600/50'
+      : 'border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-slate-400 focus:ring-slate-200',
+  ].join(' ')
+
+  const buttonClass = [
+    'w-full rounded-xl px-5 py-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60',
+    isDark
+      ? 'bg-white text-black hover:bg-slate-100 focus:ring-white/70 focus:ring-offset-slate-900'
+      : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-900 focus:ring-offset-white',
+  ].join(' ')
+
   return (
     <form onSubmit={handleSubmit} className="space-y-3">
       <input
@@ -34,7 +57,7 @@ export default function CompetitorForm({ brandId, onAdded }: { brandId: string, 
         value={formData.competitor_name}
         onChange={(e) => setFormData({ ...formData, competitor_name: e.target.value })}
         placeholder="Competitor Name"
-        className="w-full px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 outline-none"
+        className={inputClass}
         required
       />
       <input
@@ -42,7 +65,7 @@ export default function CompetitorForm({ brandId, onAdded }: { brandId: string, 
         value={formData.competitor_domain}
         onChange={(e) => setFormData({ ...formData, competitor_domain: e.target.value })}
         placeholder="competitor.com"
-        className="w-full px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 outline-none"
+        className={inputClass}
         required
       />
       <input
@@ -50,13 +73,13 @@ export default function CompetitorForm({ brandId, onAdded }: { brandId: string, 
         value={formData.region}
         onChange={(e) => setFormData({ ...formData, region: e.target.value })}
         placeholder="Region"
-        className="w-full px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 outline-none"
+        className={inputClass}
         required
       />
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-white text-black px-4 py-3 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+        className={buttonClass}
       >
         Add Competitor
       </button>

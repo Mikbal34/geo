@@ -1,9 +1,15 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 
-export default function BrandForm() {
+export type BrandFormTheme = 'light' | 'dark'
+
+interface BrandFormProps {
+  theme?: BrandFormTheme
+}
+
+export default function BrandForm({ theme = 'light' }: BrandFormProps) {
   const router = useRouter()
   const [formData, setFormData] = useState({
     brand_name: '',
@@ -12,8 +18,9 @@ export default function BrandForm() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const isDark = theme === 'dark'
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
@@ -55,11 +62,47 @@ export default function BrandForm() {
     }
   }
 
+  const labelClass = [
+    'block text-sm font-semibold mb-2 transition-colors',
+    isDark ? 'text-slate-100' : 'text-slate-700',
+  ].join(' ')
+  const helperTextClass = [
+    'mt-1.5 text-sm transition-colors',
+    isDark ? 'text-slate-400' : 'text-slate-500',
+  ].join(' ')
+  const inputBaseClass =
+    'w-full rounded-xl border px-4 py-3 transition-colors shadow-sm focus:outline-none focus:ring-2'
+  const textInputClass = [
+    inputBaseClass,
+    isDark
+      ? 'border-[#2a2a2a] bg-[#0a0a0a] text-white placeholder-slate-500 focus:border-slate-500 focus:ring-slate-600/50'
+      : 'border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-slate-400 focus:ring-slate-200',
+  ].join(' ')
+  const selectClass = [
+    inputBaseClass,
+    isDark
+      ? 'border-[#2a2a2a] bg-[#0a0a0a] text-white focus:border-slate-500 focus:ring-slate-600/50'
+      : 'border-slate-200 bg-white text-slate-900 focus:border-slate-400 focus:ring-slate-200',
+  ].join(' ')
+  const iconClass = ['w-5 h-5', isDark ? 'text-slate-400' : 'text-slate-500'].join(' ')
+  const errorContainerClass = [
+    'rounded-2xl border p-4',
+    isDark ? 'border-red-800 bg-red-900/20' : 'border-red-200 bg-red-50',
+  ].join(' ')
+  const errorIconClass = ['w-5 h-5 mt-0.5 flex-shrink-0', isDark ? 'text-red-400' : 'text-red-500'].join(' ')
+  const errorTextClass = ['text-sm', isDark ? 'text-red-400' : 'text-red-600'].join(' ')
+  const buttonClass = [
+    'group w-full rounded-xl py-4 font-semibold flex items-center justify-center gap-2 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60',
+    isDark
+      ? 'bg-white text-black hover:bg-slate-100 focus:ring-white/70 focus:ring-offset-slate-900'
+      : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-900 focus:ring-offset-white',
+  ].join(' ')
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <form onSubmit={handleSubmit} className="space-y-8">
       <div className="space-y-6">
         <div>
-          <label className="block text-sm font-semibold text-white mb-2">
+          <label className={labelClass}>
             Brand Name *
           </label>
           <input
@@ -67,19 +110,19 @@ export default function BrandForm() {
             required
             value={formData.brand_name}
             onChange={(e) => setFormData({ ...formData, brand_name: e.target.value })}
-            className="w-full px-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 transition-all outline-none"
+            className={textInputClass}
             placeholder="e.g., EcoClean"
           />
-          <p className="mt-1.5 text-sm text-slate-400">Your brand's official name</p>
+          <p className={helperTextClass}>Your brand&apos;s official name</p>
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-white mb-2">
+          <label className={labelClass}>
             Domain *
           </label>
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className={iconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 01-9 9m9-9a9 9 0 00-9-9m9 9H3m9 9a9 9 0 01-9-9m9 9c1.657 0 3-4.03 3-9s-1.343-9-3-9m0 18c-1.657 0-3-4.03-3-9s1.343-9 3-9m-9 9a9 9 0 019-9" />
               </svg>
             </div>
@@ -88,22 +131,22 @@ export default function BrandForm() {
               required
               value={formData.domain}
               onChange={(e) => setFormData({ ...formData, domain: e.target.value })}
-              className="w-full pl-12 pr-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 transition-all outline-none"
+              className={`${textInputClass} pl-12`}
               placeholder="ecoclean.com"
             />
           </div>
-          <p className="mt-1.5 text-sm text-slate-400">Your brand's website domain</p>
+          <p className={helperTextClass}>Your brand&apos;s website domain</p>
         </div>
 
         <div>
-          <label className="block text-sm font-semibold text-white mb-2">
+          <label className={labelClass}>
             Target Region & Language *
           </label>
           <select
             required
             value={formData.region}
             onChange={(e) => setFormData({ ...formData, region: e.target.value })}
-            className="w-full px-4 py-3 bg-[#0a0a0a] border border-[#2a2a2a] text-white focus:border-slate-600 focus:ring-1 focus:ring-slate-600 transition-all outline-none"
+            className={selectClass}
           >
             <option value="">Select a region</option>
             <option value="Global">Global (English)</option>
@@ -122,17 +165,17 @@ export default function BrandForm() {
             <option value="Russia">Russia (Russian)</option>
             <option value="South Korea">South Korea (Korean)</option>
           </select>
-          <p className="mt-1.5 text-sm text-slate-400">Analysis language and target market</p>
+          <p className={helperTextClass}>Analysis language and target market</p>
         </div>
       </div>
 
       {error && (
-        <div className="bg-red-900/20 border border-red-800 p-4">
+        <div className={errorContainerClass}>
           <div className="flex items-start gap-3">
-            <svg className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className={errorIconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <p className="text-sm text-red-400">{error}</p>
+            <p className={errorTextClass}>{error}</p>
           </div>
         </div>
       )}
@@ -140,11 +183,11 @@ export default function BrandForm() {
       <button
         type="submit"
         disabled={loading}
-        className="w-full bg-white text-black py-4 font-semibold hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 flex items-center justify-center gap-2 group"
+        className={buttonClass}
       >
         {loading ? (
           <>
-            <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+            <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
             </svg>
@@ -153,7 +196,7 @@ export default function BrandForm() {
         ) : (
           <>
             Continue to Prompts
-            <svg className="w-5 h-5 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <svg className="h-5 w-5 transition-transform group-hover:translate-x-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
             </svg>
           </>

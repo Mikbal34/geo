@@ -1,8 +1,11 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Moon, Sun } from 'lucide-react'
+
+type Theme = 'light' | 'dark'
 
 export default function LoginPage() {
   const router = useRouter()
@@ -12,8 +15,26 @@ export default function LoginPage() {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [theme, setTheme] = useState<Theme>('light')
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  useEffect(() => {
+    const storedTheme = localStorage.getItem('auth_theme')
+    if (storedTheme === 'light' || storedTheme === 'dark') {
+      setTheme(storedTheme)
+    }
+  }, [])
+
+  useEffect(() => {
+    localStorage.setItem('auth_theme', theme)
+  }, [theme])
+
+  const isDark = theme === 'dark'
+
+  const toggleTheme = () => {
+    setTheme((prev) => (prev === 'light' ? 'dark' : 'light'))
+  }
+
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
@@ -31,11 +52,9 @@ export default function LoginPage() {
         throw new Error(data.error || 'Failed to login')
       }
 
-      // Save token to localStorage
       localStorage.setItem('auth_token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
 
-      // Redirect to projects dashboard
       router.push('/projects')
     } catch (err: any) {
       setError(err.message)
@@ -44,82 +63,204 @@ export default function LoginPage() {
     }
   }
 
+  const containerClass = [
+    'relative min-h-screen flex items-center justify-center px-4 py-12',
+    isDark
+      ? 'bg-gradient-to-br from-slate-950 via-slate-950 to-slate-900'
+      : 'bg-gradient-to-br from-slate-50 via-white to-slate-100',
+  ].join(' ')
+
+  const badgeClass = [
+    'inline-flex items-center gap-2 rounded-full border px-4 py-1 text-sm font-medium transition-colors',
+    isDark
+      ? 'border-white/10 bg-white/10 text-slate-100'
+      : 'border-slate-200 bg-white text-slate-600 shadow-sm',
+  ].join(' ')
+
+  const heroTitleClass = [
+    'text-4xl font-semibold tracking-tight sm:text-5xl',
+    isDark ? 'text-white' : 'text-slate-900',
+  ].join(' ')
+
+  const heroDescriptionClass = [
+    'text-base leading-relaxed sm:text-lg',
+    isDark ? 'text-slate-400' : 'text-slate-500',
+  ].join(' ')
+
+  const insightsTitleClass = [
+    'font-semibold',
+    isDark ? 'text-slate-200' : 'text-slate-600',
+  ].join(' ')
+
+  const insightsTextClass = isDark ? 'text-slate-400' : 'text-slate-400'
+
+  const cardClass = [
+    'w-full max-w-md rounded-3xl border p-8 sm:p-10 transition-colors',
+    isDark
+      ? 'border-white/10 bg-white/5 shadow-xl shadow-slate-900/40 backdrop-blur-xl'
+      : 'border-slate-200 bg-white shadow-xl shadow-slate-200/60',
+  ].join(' ')
+
+  const cardTitleClass = [
+    'text-2xl font-semibold',
+    isDark ? 'text-white' : 'text-slate-900',
+  ].join(' ')
+
+  const cardDescriptionClass = [
+    'mt-2 text-sm',
+    isDark ? 'text-slate-400' : 'text-slate-500',
+  ].join(' ')
+
+  const labelClass = [
+    'mb-2 block text-sm font-medium',
+    isDark ? 'text-slate-200' : 'text-slate-700',
+  ].join(' ')
+
+  const inputClass = [
+    'w-full rounded-xl border px-4 py-3 text-base shadow-sm focus:outline-none focus:ring-2 transition-colors',
+    isDark
+      ? 'border-[#2a2a2a] bg-[#171717] text-white placeholder-slate-500 focus:border-slate-500 focus:ring-slate-600/50'
+      : 'border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-slate-400 focus:ring-slate-200',
+  ].join(' ')
+
+  const errorContainerClass = [
+    'rounded-2xl border p-4',
+    isDark ? 'border-red-800 bg-red-900/20' : 'border-red-200 bg-red-50',
+  ].join(' ')
+
+  const errorIconClass = [
+    'mt-0.5 h-5 w-5 flex-shrink-0',
+    isDark ? 'text-red-400' : 'text-red-500',
+  ].join(' ')
+
+  const errorTextClass = ['text-sm', isDark ? 'text-red-400' : 'text-red-600'].join(' ')
+
+  const buttonClass = [
+    'flex w-full items-center justify-center gap-2 rounded-xl py-3 font-medium transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60',
+    isDark
+      ? 'bg-white text-black hover:bg-slate-100 focus:ring-white/70 focus:ring-offset-slate-950'
+      : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-900 focus:ring-offset-white',
+  ].join(' ')
+
+  const footerTextClass = [
+    'mt-8 text-center text-sm',
+    isDark ? 'text-slate-400' : 'text-slate-500',
+  ].join(' ')
+
+  const footerLinkClass = [
+    'font-medium transition-colors',
+    isDark ? 'text-white hover:text-slate-200' : 'text-slate-700 hover:text-slate-900',
+  ].join(' ')
+
+  const toggleButtonClass = [
+    'inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors focus:outline-none focus:ring-2',
+    isDark
+      ? 'border-white/10 bg-white/10 text-slate-100 hover:bg-white/20 focus:ring-white/30 focus:ring-offset-0'
+      : 'border-slate-200 bg-white text-slate-600 hover:text-slate-800 shadow-sm focus:ring-slate-200 focus:ring-offset-2 focus:ring-offset-white',
+  ].join(' ')
+
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">
-            Log in to your account
-          </h1>
-          <p className="text-slate-400">Enter your email and password below to log in</p>
+    <div className={containerClass}>
+      <div className="absolute right-6 top-6">
+        <button
+          type="button"
+          onClick={toggleTheme}
+          className={toggleButtonClass}
+          aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+          aria-pressed={isDark}
+        >
+          {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          <span>{isDark ? 'Light mode' : 'Dark mode'}</span>
+        </button>
+      </div>
+
+      <div className="w-full max-w-5xl flex flex-col gap-12 lg:flex-row lg:items-center lg:justify-between">
+        <div className="space-y-6 text-center lg:text-left">
+          <span className={badgeClass}>Welcome back</span>
+          <h1 className={heroTitleClass}>Log in to your Brand Analyzer dashboard</h1>
+          <p className={heroDescriptionClass}>
+            Continue where you left off, review insights, and keep your brand strategy aligned across every
+            dimension.
+          </p>
+          <div className="hidden items-start gap-8 text-sm lg:flex">
+            <div>
+              <p className={insightsTitleClass}>Security-first</p>
+              <p className={insightsTextClass}>Two-factor ready and session protected</p>
+            </div>
+            <div>
+              <p className={insightsTitleClass}>Insight-ready</p>
+              <p className={insightsTextClass}>Analytics update in real-time</p>
+            </div>
+          </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">
-              Email address
-            </label>
-            <input
-              type="email"
-              required
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-4 py-3 bg-[#171717] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 transition-all outline-none"
-              placeholder="email@example.com"
-            />
+        <div className={cardClass}>
+          <div className="mb-6">
+            <h2 className={cardTitleClass}>Log in</h2>
+            <p className={cardDescriptionClass}>Enter your details to access your workspace.</p>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-white mb-2">
-              Password
-            </label>
-            <input
-              type="password"
-              required
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="w-full px-4 py-3 bg-[#171717] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 transition-all outline-none"
-              placeholder="Password"
-            />
-          </div>
-
-          {error && (
-            <div className="bg-red-900/20 border border-red-800 p-4">
-              <div className="flex items-start gap-3">
-                <svg className="w-5 h-5 text-red-400 mt-0.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <p className="text-sm text-red-400">{error}</p>
-              </div>
+          <form onSubmit={handleSubmit} className="space-y-6">
+            <div>
+              <label className={labelClass}>Email address</label>
+              <input
+                type="email"
+                required
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                className={inputClass}
+                placeholder="email@example.com"
+              />
             </div>
-          )}
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full bg-white text-black py-3 font-medium hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 flex items-center justify-center gap-2"
-          >
-            {loading ? (
-              <>
-                <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                Signing In...
-              </>
-            ) : (
-              'Log in'
+            <div>
+              <label className={labelClass}>Password</label>
+              <input
+                type="password"
+                required
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                className={inputClass}
+                placeholder="Password"
+              />
+            </div>
+
+            {error && (
+              <div className={errorContainerClass}>
+                <div className="flex items-start gap-3">
+                  <svg className={errorIconClass} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  <p className={errorTextClass}>{error}</p>
+                </div>
+              </div>
             )}
-          </button>
-        </form>
 
-        <div className="mt-6 text-center">
-          <p className="text-sm text-slate-400">
+            <button type="submit" disabled={loading} className={buttonClass}>
+              {loading ? (
+                <>
+                  <svg className="h-5 w-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    />
+                  </svg>
+                  Signing in...
+                </>
+              ) : (
+                'Log in'
+              )}
+            </button>
+          </form>
+
+          <div className={footerTextClass}>
             Don't have an account?{' '}
-            <Link href="/register" className="font-medium text-white hover:text-slate-300 transition-colors">
-              Sign up
+            <Link href="/register" className={footerLinkClass}>
+              Create one
             </Link>
-          </p>
+          </div>
         </div>
       </div>
     </div>

@@ -1,12 +1,21 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, type FormEvent } from 'react'
 
-export default function PromptForm({ brandId, onAdded }: { brandId: string, onAdded: () => void }) {
+type Theme = 'light' | 'dark'
+
+interface PromptFormProps {
+  brandId: string
+  onAdded: () => void
+  theme?: Theme
+}
+
+export default function PromptForm({ brandId, onAdded, theme = 'dark' }: PromptFormProps) {
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(false)
+  const isDark = theme === 'dark'
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     setLoading(true)
 
@@ -23,21 +32,35 @@ export default function PromptForm({ brandId, onAdded }: { brandId: string, onAd
     }
   }
 
+  const inputClass = [
+    'flex-1 rounded-xl border px-4 py-3 transition-colors shadow-sm focus:outline-none focus:ring-2',
+    isDark
+      ? 'border-[#2a2a2a] bg-[#0a0a0a] text-white placeholder-slate-500 focus:border-slate-500 focus:ring-slate-600/50'
+      : 'border-slate-200 bg-white text-slate-900 placeholder-slate-400 focus:border-slate-400 focus:ring-slate-200',
+  ].join(' ')
+
+  const buttonClass = [
+    'rounded-xl px-5 py-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60',
+    isDark
+      ? 'bg-white text-black hover:bg-slate-100 focus:ring-white/70 focus:ring-offset-slate-900'
+      : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-900 focus:ring-offset-white',
+  ].join(' ')
+
   return (
-    <form onSubmit={handleSubmit} className="flex gap-2">
+    <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row">
       <input
         type="text"
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder="Add a prompt..."
-        className="flex-1 px-3 py-2 bg-[#0a0a0a] border border-[#2a2a2a] text-white placeholder-slate-500 focus:border-slate-600 focus:ring-1 focus:ring-slate-600 outline-none"
+        className={inputClass}
         minLength={10}
         required
       />
       <button
         type="submit"
         disabled={loading}
-        className="bg-white text-black px-4 py-3 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+        className={buttonClass}
       >
         Add
       </button>

@@ -9,12 +9,21 @@ interface CompetitorSuggestion {
   region: string
 }
 
-export default function SuggestCompetitorsButton({ brandId, onSuggested }: { brandId: string, onSuggested: () => void }) {
+type Theme = 'light' | 'dark'
+
+interface SuggestCompetitorsButtonProps {
+  brandId: string
+  onSuggested: () => void
+  theme?: Theme
+}
+
+export default function SuggestCompetitorsButton({ brandId, onSuggested, theme = 'dark' }: SuggestCompetitorsButtonProps) {
   const [loading, setLoading] = useState(false)
   const [showModal, setShowModal] = useState(false)
   const [suggestions, setSuggestions] = useState<CompetitorSuggestion[]>([])
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [adding, setAdding] = useState(false)
+  const isDark = theme === 'dark'
 
   const handleSuggest = async () => {
     setLoading(true)
@@ -129,12 +138,67 @@ export default function SuggestCompetitorsButton({ brandId, onSuggested }: { bra
     setSelected(new Set())
   }
 
+  const buttonClass = [
+    'w-full inline-flex items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60',
+    isDark
+      ? 'bg-white text-black hover:bg-slate-100 focus:ring-white/70 focus:ring-offset-slate-900'
+      : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-900 focus:ring-offset-white',
+  ].join(' ')
+
+  const overlayClass = 'fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4'
+  const modalClass = [
+    'w-full max-w-3xl overflow-hidden rounded-3xl border shadow-2xl transition-colors',
+    isDark ? 'border-white/10 bg-[#0d0d10] text-white' : 'border-slate-200 bg-white text-slate-900',
+  ].join(' ')
+  const modalHeaderClass = [
+    'border-b px-6 py-5 transition-colors',
+    isDark ? 'border-white/5 bg-white/5' : 'border-slate-200 bg-slate-50',
+  ].join(' ')
+  const modalBodyClass = 'max-h-[50vh] overflow-y-auto px-6 py-5'
+  const modalFooterClass = [
+    'border-t px-6 py-5 flex items-center justify-between transition-colors',
+    isDark ? 'border-white/5 bg-white/5' : 'border-slate-200 bg-slate-50',
+  ].join(' ')
+  const cardBaseClass = [
+    'cursor-pointer rounded-2xl border-2 p-4 transition-all',
+    isDark ? 'border-white/10 hover:border-white/20' : 'border-slate-200 hover:border-slate-300',
+  ]
+  const cardSelectedClass = isDark ? 'border-white bg-white/5' : 'border-slate-900 bg-slate-50'
+  const cardUnselectedClass = isDark ? 'bg-transparent' : 'bg-white'
+  const selectionBadgeClass = (active: boolean) =>
+    [
+      'flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold transition-colors',
+      active
+        ? isDark
+          ? 'bg-white text-black'
+          : 'bg-slate-900 text-white'
+        : isDark
+          ? 'bg-white/10 text-slate-400'
+          : 'bg-slate-100 text-slate-500',
+    ].join(' ')
+  const cancelButtonClass = [
+    'rounded-xl px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 disabled:opacity-60',
+    isDark
+      ? 'border border-white/10 text-slate-200 hover:bg-white/10 focus:ring-white/20'
+      : 'border border-slate-200 text-slate-600 hover:bg-slate-100 focus:ring-slate-200',
+  ].join(' ')
+  const addButtonClass = [
+    'rounded-xl px-4 py-2 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60',
+    isDark
+      ? 'bg-white text-black hover:bg-slate-100 focus:ring-white/70 focus:ring-offset-slate-900'
+      : 'bg-slate-900 text-white hover:bg-slate-800 focus:ring-slate-900 focus:ring-offset-white',
+  ].join(' ')
+  const modalDescriptionClass = ['mt-2 text-sm', isDark ? 'text-slate-400' : 'text-slate-500'].join(' ')
+  const footerTextClass = ['text-sm', isDark ? 'text-slate-400' : 'text-slate-500'].join(' ')
+  const suggestionNameClass = ['font-semibold', isDark ? 'text-white' : 'text-slate-900'].join(' ')
+  const suggestionMetaClass = ['text-sm', isDark ? 'text-slate-300' : 'text-slate-600'].join(' ')
+
   return (
     <>
       <button
         onClick={handleSuggest}
         disabled={loading}
-        className="w-full flex items-center justify-center gap-2 bg-white text-black px-6 py-3 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+        className={buttonClass}
       >
         <Sparkles className="w-5 h-5" />
         {loading ? 'Finding Competitors...' : 'AI Suggest Competitors'}
@@ -142,90 +206,69 @@ export default function SuggestCompetitorsButton({ brandId, onSuggested }: { bra
 
       {/* Modal */}
       {showModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-[#171717] shadow-2xl max-w-3xl w-full max-h-[80vh] overflow-hidden border border-slate-800">
-            {/* Header */}
-            <div className="bg-[#0a0a0a] p-6 border-b border-slate-800">
+        <div className={overlayClass}>
+          <div className={modalClass}>
+            <div className={modalHeaderClass}>
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-3">
-                  <Building2 className="w-6 h-6 text-white" />
-                  <h2 className="text-2xl font-bold text-white">AI Suggested Competitors</h2>
+                  <Building2 className="h-6 w-6" />
+                  <h2 className="text-2xl font-semibold">AI Suggested Competitors</h2>
                 </div>
-                <button
-                  onClick={handleCloseModal}
-                  className="text-white/80 hover:text-white transition-colors"
-                >
-                  <X className="w-6 h-6" />
+                <button onClick={handleCloseModal} className={isDark ? 'text-slate-300 hover:text-white' : 'text-slate-400 hover:text-slate-600'}>
+                  <X className="h-6 w-6" />
                 </button>
               </div>
-              <p className="text-slate-400 mt-2">Select the competitors you want to add</p>
+              <p className={modalDescriptionClass}>Select the competitors you want to add</p>
             </div>
 
-            {/* Content */}
-            <div className="p-6 overflow-y-auto max-h-[50vh]">
+            <div className={modalBodyClass}>
               <div className="space-y-3">
-                {suggestions.map((suggestion, index) => (
-                  <div
-                    key={index}
-                    onClick={() => toggleSelection(index)}
-                    className={`p-4 border-2 cursor-pointer transition-all ${
-                      selected.has(index)
-                        ? 'border-white bg-[#0a0a0a]'
-                        : 'border-slate-700 hover:border-slate-600'
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <div
-                        className={`w-6 h-6 flex items-center justify-center flex-shrink-0 transition-colors ${
-                          selected.has(index)
-                            ? 'bg-white text-black'
-                            : 'bg-slate-800 text-slate-400'
-                        }`}
-                      >
-                        {selected.has(index) && <Check className="w-4 h-4" />}
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <Building2 className="w-4 h-4 text-slate-400" />
-                          <h3 className="font-bold text-white">{suggestion.name}</h3>
+                {suggestions.map((suggestion, index) => {
+                  const active = selected.has(index)
+                  return (
+                    <div
+                      key={index}
+                      onClick={() => toggleSelection(index)}
+                      className={[...cardBaseClass, active ? cardSelectedClass : cardUnselectedClass].join(' ')}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={selectionBadgeClass(active)}>
+                          {active && <Check className="h-4 w-4" />}
                         </div>
-                        <div className="space-y-1 text-sm">
-                          <p className="text-slate-400">
+                        <div className="flex-1 space-y-1">
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4 text-current opacity-70" />
+                            <h3 className={suggestionNameClass}>{suggestion.name}</h3>
+                          </div>
+                          <p className={suggestionMetaClass}>
                             <span className="font-medium">Domain:</span> {suggestion.domain}
                           </p>
-                          <p className="text-slate-400">
+                          <p className={suggestionMetaClass}>
                             <span className="font-medium">Region:</span> {suggestion.region}
                           </p>
                         </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
 
-            {/* Footer */}
-            <div className="border-t border-slate-800 p-6 bg-[#0a0a0a]">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-slate-400">
-                  {selected.size} of {suggestions.length} selected
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={handleCloseModal}
-                    disabled={adding}
-                    className="px-4 py-2 border border-slate-700 text-white hover:bg-[#171717] disabled:opacity-50 transition-colors"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    onClick={handleAdd}
-                    disabled={selected.size === 0 || adding}
-                    className="px-4 py-2 bg-white text-black hover:bg-slate-100 disabled:opacity-50 transition-colors"
-                  >
-                    {adding ? 'Adding...' : `Add ${selected.size} Competitor${selected.size !== 1 ? 's' : ''}`}
-                  </button>
-                </div>
+            <div className={modalFooterClass}>
+              <p className={footerTextClass}>
+                {selected.size} of {suggestions.length} selected
+              </p>
+              <div className="flex gap-3">
+                <button onClick={handleCloseModal} disabled={adding} className={cancelButtonClass}>
+                  Cancel
+                </button>
+                <button
+                  onClick={handleAdd}
+                  disabled={selected.size === 0 || adding}
+                  className={addButtonClass}
+                >
+                  {adding ? 'Adding...' : `Add ${selected.size} Competitor${selected.size !== 1 ? 's' : ''}`}
+                </button>
               </div>
             </div>
           </div>
