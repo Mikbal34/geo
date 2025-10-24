@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { revalidatePath } from 'next/cache'
 
 /**
  * GET /api/brands/[id]/auto-analysis-settings
@@ -83,10 +84,9 @@ export async function PUT(
 
     const supabase = await createClient()
 
-    // Update settings - ALWAYS reset last_auto_analysis_at to NOW when changing settings
-    const updates: any = {
-      last_auto_analysis_at: new Date().toISOString()
-    }
+    // Update settings - DO NOT touch last_auto_analysis_at
+    // It should only be updated when an actual analysis runs (cron or manual)
+    const updates: any = {}
 
     if (auto_analysis_enabled !== undefined) {
       updates.auto_analysis_enabled = auto_analysis_enabled
@@ -109,20 +109,37 @@ export async function PUT(
     }
 
     // Calculate next analysis time
-    const nextRun = new Date(updates.last_auto_analysis_at)
-    nextRun.setMinutes(nextRun.getMinutes() + (data.auto_analysis_interval || 1440))
+    let next_analysis_at = null
+    if (data.last_auto_analysis_at) {
+      const lastRunStr = data.last_auto_analysis_at.endsWith('Z')
+        ? data.last_auto_analysis_at
+        : data.last_auto_analysis_at + 'Z'
+      const lastRun = new Date(lastRunStr)
+      const nextRun = new Date(lastRun.getTime() + (data.auto_analysis_interval || 1440) * 60 * 1000)
+      next_analysis_at = nextRun.toISOString()
+    } else if (data.auto_analysis_enabled) {
+      // If never run before but auto-analysis is enabled, schedule from now
+      const now = new Date()
+      const nextRun = new Date(now.getTime() + (data.auto_analysis_interval || 1440) * 60 * 1000)
+      next_analysis_at = nextRun.toISOString()
+    }
 
     console.log('[AUTO-ANALYSIS PUT] Success:', {
       enabled: data.auto_analysis_enabled,
       interval: data.auto_analysis_interval,
-      next_at: nextRun.toISOString()
+      last_analysis_at: data.last_auto_analysis_at,
+      next_at: next_analysis_at
     })
+
+    // Revalidate the cache for this brand's settings page
+    revalidatePath(`/brands/${params.id}/settings`)
+    revalidatePath(`/api/brands/${params.id}/auto-analysis-settings`)
 
     return NextResponse.json({
       success: true,
       auto_analysis_enabled: data.auto_analysis_enabled,
       auto_analysis_interval: data.auto_analysis_interval,
-      next_analysis_at: nextRun.toISOString()
+      next_analysis_at
     })
   } catch (error) {
     console.error('Error updating auto-analysis settings:', error)

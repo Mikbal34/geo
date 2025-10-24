@@ -73,17 +73,21 @@ Region: {region}
 
 Requirements:
 - Research ACTUAL existing competitors in the same industry/market
+- Competitors MUST be from the SAME REGION: {region}
+- ALL competitors must operate in {region} market
 - Competitors should be similar in size and market positioning
 - Include real domains (not fake/example domains)
-- Consider the brand's region but suggest both local and global competitors
 - Focus on direct competitors (same products/services, target audience)
+- DO NOT suggest global/international competitors unless they operate in {region}
 - DO NOT make up fake companies - only suggest real competitors
+
+CRITICAL: All suggested competitors MUST be based in or primarily operate in {region}. This is a strict requirement.
 
 Return ONLY valid JSON in this format:
 {"competitors": [
   {
     "name": "Actual Competitor Name",
     "domain": "realcompetitor.com",
-    "region": "Their Market Region"
+    "region": "{region}"
   }
 ]}`

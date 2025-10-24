@@ -202,6 +202,12 @@ export async function POST(request: Request) {
         .eq('id', analysisRun.id)
     }
 
+    // Update last_auto_analysis_at for the brand (for auto-analysis scheduling)
+    await supabase
+      .from('brands')
+      .update({ last_auto_analysis_at: new Date().toISOString() })
+      .eq('id', brandId)
+
     return NextResponse.json(
       {
         success: true,

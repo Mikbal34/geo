@@ -10,6 +10,7 @@ import {
   Download,
   ExternalLink,
   Filter,
+  MessageSquare,
   Moon,
   Sparkles,
   Sun,
@@ -34,10 +35,10 @@ import {
 import Navigation from '@/components/layout/Navigation'
 import { exportDashboardToExcel } from '@/lib/utils/excel-export'
 import type { Brand } from '@/types/brand'
-import type { ScoreLLM, ScoreOverall } from '@/types/llm'
+import type { LLMRun, LLMProvider, ScoreLLM, ScoreOverall } from '@/types/llm'
+import type { Prompt } from '@/types/prompt'
 
 type Theme = 'light' | 'dark'
-type LLMProvider = 'chatgpt' | 'gemini' | 'perplexity'
 type TimeFilter = '24h' | '7d' | '30d' | 'custom'
 type MonthlyView = 'daily' | 'weekly'
 
@@ -84,6 +85,8 @@ export default function DashboardPage() {
 
   const [analysisHistory, setAnalysisHistory] = useState<AnalysisHistory | null>(null)
   const [availableRuns, setAvailableRuns] = useState<any[]>([])
+  const [llmRuns, setLlmRuns] = useState<LLMRun[]>([])
+  const [prompts, setPrompts] = useState<Prompt[]>([])
 
   const [competitorScores, setCompetitorScores] = useState<CompetitorScore[]>([])
   const [loadingCompetitors, setLoadingCompetitors] = useState(true)
@@ -123,6 +126,22 @@ export default function DashboardPage() {
     if (!brandId) return
     fetchCompetitorScores()
   }, [brandId, selectedLLMs])
+
+  useEffect(() => {
+    if (!brandId) return
+
+    const fetchPrompts = async () => {
+      try {
+        const res = await fetch(`/api/prompts/${brandId}`)
+        const data = await res.json()
+        setPrompts(data.prompts || [])
+      } catch (error) {
+        console.error('Error fetching prompts:', error)
+      }
+    }
+
+    fetchPrompts()
+  }, [brandId])
 
   useEffect(() => {
     if (!brandId) return
@@ -177,6 +196,23 @@ export default function DashboardPage() {
     }
   }
 
+  const fetchLLMRunsForAnalyses = async (runs: any[]) => {
+    try {
+      const runIds = runs.map((run: any) => run.id).filter(Boolean)
+      if (!runIds.length) {
+        setLlmRuns([])
+        return
+      }
+
+      const res = await fetch(`/api/llm-runs/${brandId}?analysis_run_ids=${runIds.join(',')}`)
+      const data = await res.json()
+      setLlmRuns(data.llm_runs || [])
+    } catch (error) {
+      console.error('Error fetching LLM runs:', error)
+      setLlmRuns([])
+    }
+  }
+
   const fetchAvailableRuns = async () => {
     try {
       const params = new URLSearchParams()
@@ -201,6 +237,7 @@ export default function DashboardPage() {
 
       if (data.success) {
         setAvailableRuns(data.runs || [])
+        await fetchLLMRunsForAnalyses(data.runs || [])
       }
     } catch (error) {
       console.error('Error fetching analysis runs:', error)
@@ -289,6 +326,129 @@ export default function DashboardPage() {
         return '24 Hours'
     }
   }
+
+  const filteredRuns = useMemo(() => {
+    if (selectedLLMs.length === 0 || selectedLLMs.length === 3) {
+      return llmRuns
+    }
+    return llmRuns.filter((run) => selectedLLMs.includes(run.llm as LLMProvider))
+  }, [llmRuns, selectedLLMs])
+
+  const totalResponses = filteredRuns.length
+  const totalPrompts = prompts.length
+
+  const promptsWithResponsesCount = useMemo(() => {
+    const ids = new Set<string>()
+    filteredRuns.forEach((run) => ids.add(run.prompt_id))
+    return ids.size
+  }, [filteredRuns])
+
+  const averageResponseLength = useMemo(() => {
+    if (!filteredRuns.length) return 0
+    const totalWords = filteredRuns.reduce((acc, run) => {
+      if (!run.response_text) return acc
+      const words = run.response_text.trim().split(/\s+/)
+      if (words.length === 1 && words[0] === '') return acc
+      return acc + words.length
+    }, 0)
+    return Math.round(totalWords / filteredRuns.length)
+  }, [filteredRuns])
+
+  const sentimentBreakdown = useMemo(() => {
+    return filteredRuns.reduce(
+      (acc, run) => {
+        if (run.sentiment === 'positive') {
+          acc.positive += 1
+        } else if (run.sentiment === 'negative') {
+          acc.negative += 1
+        } else {
+          acc.neutral += 1
+        }
+        return acc
+      },
+      { positive: 0, neutral: 0, negative: 0 },
+    )
+  }, [filteredRuns])
+
+  const positivePct = totalResponses ? Math.round((sentimentBreakdown.positive / totalResponses) * 100) : 0
+  const neutralPct = totalResponses ? Math.round((sentimentBreakdown.neutral / totalResponses) * 100) : 0
+  const negativePct = totalResponses ? Math.round((sentimentBreakdown.negative / totalResponses) * 100) : 0
+
+  const latestRun = availableRuns.length > 0 ? availableRuns[0] : null
+  const previousRun = availableRuns.length > 1 ? availableRuns[1] : null
+  const latestRunDate = latestRun?.created_at ?? null
+
+  const visibilityDelta = useMemo(() => {
+    if (
+      !latestRun ||
+      !previousRun ||
+      latestRun.visibility_pct === undefined ||
+      latestRun.visibility_pct === null ||
+      previousRun.visibility_pct === undefined ||
+      previousRun.visibility_pct === null
+    ) {
+      return null
+    }
+    const delta = latestRun.visibility_pct - previousRun.visibility_pct
+    return {
+      label: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pts`,
+      positive: delta >= 0,
+    }
+  }, [latestRun, previousRun])
+
+  const sentimentDelta = useMemo(() => {
+    if (
+      !latestRun ||
+      !previousRun ||
+      latestRun.sentiment_pct === undefined ||
+      latestRun.sentiment_pct === null ||
+      previousRun.sentiment_pct === undefined ||
+      previousRun.sentiment_pct === null
+    ) {
+      return null
+    }
+    const delta = latestRun.sentiment_pct - previousRun.sentiment_pct
+    return {
+      label: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pts`,
+      positive: delta >= 0,
+    }
+  }, [latestRun, previousRun])
+
+  const positionDelta = useMemo(() => {
+    if (
+      !latestRun ||
+      !previousRun ||
+      latestRun.avg_position_raw === undefined ||
+      latestRun.avg_position_raw === null ||
+      previousRun.avg_position_raw === undefined ||
+      previousRun.avg_position_raw === null
+    ) {
+      return null
+    }
+    const delta = latestRun.avg_position_raw - previousRun.avg_position_raw
+    return {
+      label: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}`,
+      positive: delta <= 0,
+    }
+  }, [latestRun, previousRun])
+
+  const mentionsDelta = useMemo(() => {
+    if (
+      !latestRun ||
+      !previousRun ||
+      latestRun.mentions_raw_total === undefined ||
+      latestRun.mentions_raw_total === null ||
+      previousRun.mentions_raw_total === undefined ||
+      previousRun.mentions_raw_total === null
+    ) {
+      return null
+    }
+    const delta = latestRun.mentions_raw_total - previousRun.mentions_raw_total
+    return {
+      label: `${delta >= 0 ? '+' : ''}${delta}`,
+      positive: delta >= 0,
+    }
+  }, [latestRun, previousRun])
 
   const getLLMColor = (llm: string) => {
     switch (llm) {
@@ -521,7 +681,7 @@ export default function DashboardPage() {
                 onClick={() => router.push(`/brands/${brandId}/results`)}
                 className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors hover:opacity-90`}
               >
-                View results
+                Prompts
               </button>
               <button
                 type="button"
@@ -641,8 +801,191 @@ export default function DashboardPage() {
                 </p>
                 <p className={`text-xs ${mutedTextClass}`}>Last run volume</p>
               </div>
+          </div>
+        </div>
+
+        <div className={`${panelClass} space-y-6`}>
+          <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-4">
+              <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg">
+                <Sparkles className="h-5 w-5" />
+              </span>
+              <div className="space-y-2">
+                <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide`}>
+                  Run explorer
+                </span>
+                <h2 className={`text-3xl font-semibold ${strongTextClass}`}>Analysis results</h2>
+                <p className={`text-sm ${mutedTextClass}`}>
+                  Track how visibility, sentiment, ranking, and mentions evolve with your current filters.
+                </p>
+              </div>
+            </div>
+            <div className={`${subPanelClass} w-full space-y-2 sm:max-w-xs`}>
+              <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Latest completed run</p>
+              <p className={`text-base font-semibold ${strongTextClass}`}>
+                {latestRunDate ? new Date(latestRunDate).toLocaleString() : 'Awaiting analyses'}
+              </p>
+              <p className={`text-xs ${mutedTextClass}`}>Metrics reflect the selected time window and model mix.</p>
             </div>
           </div>
+
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <div className={`${subPanelClass} space-y-2`}>
+              <div className="flex items-center justify-between">
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Visibility</p>
+                {visibilityDelta ? (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      visibilityDelta.positive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500'
+                    }`}
+                  >
+                    {visibilityDelta.label}
+                  </span>
+                ) : (
+                  <span className={`text-[10px] ${mutedTextClass}`}>—</span>
+                )}
+              </div>
+              <p className={`text-2xl font-semibold ${strongTextClass}`}>
+                {latestRun?.visibility_pct !== undefined && latestRun?.visibility_pct !== null
+                  ? `${Math.round(latestRun.visibility_pct)}%`
+                  : '—'}
+              </p>
+              <p className={`text-xs ${mutedTextClass}`}>Share of surfaced results mentioning your brand.</p>
+            </div>
+
+            <div className={`${subPanelClass} space-y-2`}>
+              <div className="flex items-center justify-between">
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Sentiment</p>
+                {sentimentDelta ? (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      sentimentDelta.positive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500'
+                    }`}
+                  >
+                    {sentimentDelta.label}
+                  </span>
+                ) : (
+                  <span className={`text-[10px] ${mutedTextClass}`}>—</span>
+                )}
+              </div>
+              <p className={`text-2xl font-semibold ${strongTextClass}`}>
+                {latestRun?.sentiment_pct !== undefined && latestRun?.sentiment_pct !== null
+                  ? `${Math.round(latestRun.sentiment_pct)}%`
+                  : '—'}
+              </p>
+              <p className={`text-xs ${mutedTextClass}`}>Positive tone within retrieved answers.</p>
+            </div>
+
+            <div className={`${subPanelClass} space-y-2`}>
+              <div className="flex items-center justify-between">
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Avg rank</p>
+                {positionDelta ? (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      positionDelta.positive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500'
+                    }`}
+                  >
+                    {positionDelta.label}
+                  </span>
+                ) : (
+                  <span className={`text-[10px] ${mutedTextClass}`}>—</span>
+                )}
+              </div>
+              <p className={`text-2xl font-semibold ${strongTextClass}`}>
+                {latestRun?.avg_position_raw !== undefined && latestRun?.avg_position_raw !== null
+                  ? `#${latestRun.avg_position_raw.toFixed(1)}`
+                  : '—'}
+              </p>
+              <p className={`text-xs ${mutedTextClass}`}>Lower is better. Average ranking across captured mentions.</p>
+            </div>
+
+            <div className={`${subPanelClass} space-y-2`}>
+              <div className="flex items-center justify-between">
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Mentions</p>
+                {mentionsDelta ? (
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      mentionsDelta.positive ? 'bg-emerald-500/15 text-emerald-500' : 'bg-rose-500/15 text-rose-500'
+                    }`}
+                  >
+                    {mentionsDelta.label}
+                  </span>
+                ) : (
+                  <span className={`text-[10px] ${mutedTextClass}`}>—</span>
+                )}
+              </div>
+              <p className={`text-2xl font-semibold ${strongTextClass}`}>
+                {latestRun?.mentions_raw_total !== undefined && latestRun?.mentions_raw_total !== null
+                  ? latestRun.mentions_raw_total.toLocaleString()
+                  : '—'}
+              </p>
+              <p className={`text-xs ${mutedTextClass}`}>Raw brand mentions counted in the latest run.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className={`${panelClass} space-y-4`}>
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className={`text-sm font-semibold ${strongTextClass}`}>Quick insights</h2>
+              <p className={`text-xs ${mutedTextClass}`}>Snapshot of engagement across the selected filters.</p>
+            </div>
+            <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide`}>
+              {totalResponses} responses
+            </span>
+          </div>
+
+          <div className="space-y-3">
+            <div className={`${subPanelClass} flex items-start gap-3`}>
+              <Sparkles className="h-5 w-5 text-amber-400" />
+              <div>
+                <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Prompts engaged</p>
+                <p className={`text-sm font-semibold ${strongTextClass}`}>
+                  {promptsWithResponsesCount} / {totalPrompts || '—'}
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>Prompts with at least one response in this window.</p>
+              </div>
+            </div>
+
+            <div className={`${subPanelClass} flex items-start gap-3`}>
+              <MessageSquare className="h-5 w-5 text-sky-400" />
+              <div>
+                <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Avg response length</p>
+                <p className={`text-sm font-semibold ${strongTextClass}`}>
+                  {averageResponseLength ? `${averageResponseLength} words` : '—'}
+                </p>
+                <p className={`text-xs ${mutedTextClass}`}>Textual depth across captured answers.</p>
+              </div>
+            </div>
+
+            <div className={`${subPanelClass} flex items-start gap-3`}>
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
+                <TrendingUp className="h-4 w-4" />
+              </div>
+              <div className="flex-1 space-y-1">
+                <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Sentiment mix</p>
+                {totalResponses ? (
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="rounded-xl bg-emerald-500/10 py-2">
+                      <p className="text-sm font-semibold text-emerald-400">{positivePct}%</p>
+                      <p className={`text-[11px] ${mutedTextClass}`}>Positive</p>
+                    </div>
+                    <div className="rounded-xl bg-slate-500/10 py-2">
+                      <p className={`text-sm font-semibold ${mutedTextClass}`}>{neutralPct}%</p>
+                      <p className={`text-[11px] ${mutedTextClass}`}>Neutral</p>
+                    </div>
+                    <div className="rounded-xl bg-rose-500/10 py-2">
+                      <p className="text-sm font-semibold text-rose-400">{negativePct}%</p>
+                      <p className={`text-[11px] ${mutedTextClass}`}>Negative</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className={`text-xs ${mutedTextClass}`}>Run analyses to populate sentiment mix.</p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
 
           {statusError && (
             <div className={panelClass}>

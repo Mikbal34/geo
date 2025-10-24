@@ -146,17 +146,17 @@ export default function Home() {
   return (
     <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
       <div className="absolute inset-0">
-        <div className="absolute top-0 -left-4 h-72 w-72 rounded-full bg-purple-500/40 blur-3xl mix-blend-screen animate-blob" />
-        <div className="absolute top-10 -right-10 h-80 w-80 rounded-full bg-indigo-500/30 blur-3xl mix-blend-screen animate-blob animation-delay-2000" />
-        <div className="absolute bottom-10 left-1/4 h-96 w-96 rounded-full bg-slate-500/20 blur-3xl mix-blend-screen animate-blob animation-delay-4000" />
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(148,163,184,0.08),_transparent_65%)]" />
+        <div className="absolute top-0 -left-4 h-72 w-72 rounded-full bg-white/10 blur-3xl mix-blend-screen animate-blob" />
+        <div className="absolute top-10 -right-10 h-80 w-80 rounded-full bg-slate-200/20 blur-3xl mix-blend-screen animate-blob animation-delay-2000" />
+        <div className="absolute bottom-10 left-1/4 h-96 w-96 rounded-full bg-white/5 blur-3xl mix-blend-screen animate-blob animation-delay-4000" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.06),_transparent_65%)]" />
       </div>
 
       <div className="relative flex min-h-screen flex-col">
         <header className="mx-auto w-full max-w-6xl px-6 pt-10">
           <div className="flex items-center justify-between rounded-2xl border border-white/10 bg-white/5 px-5 py-4 backdrop-blur-xl">
             <div className="flex items-center gap-3">
-              <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg">
+              <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg">
                 <Sparkles className="h-5 w-5" />
               </span>
               <div>
@@ -228,7 +228,7 @@ export default function Home() {
                     key={item.label}
                     className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-slate-200"
                   >
-                    <item.icon className="h-4 w-4 text-amber-300" />
+                    <item.icon className="h-4 w-4 text-white" />
                     {item.label}
                   </span>
                 ))}
@@ -238,7 +238,7 @@ export default function Home() {
             <div className="grid gap-6">
               <motion.div
                 variants={itemVariants}
-                className="rounded-3xl border border-white/10 bg-white/10 p-6 shadow-[0_20px_60px_-25px_rgba(59,130,246,0.55)] backdrop-blur-2xl"
+                className="rounded-3xl border border-white/10 bg-white/10 p-6 shadow-[0_20px_60px_-25px_rgba(255,255,255,0.18)] backdrop-blur-2xl"
               >
                 <motion.div animate={floatingAnimation}>
                   <div className="flex items-center justify-between">
@@ -246,7 +246,7 @@ export default function Home() {
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-200/70">Latest run summary</p>
                       <p className="text-3xl font-semibold text-white">92.4 visibility</p>
                     </div>
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400 to-teal-500 text-white">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-200/40 to-white/10 text-white">
                       <TrendingUp className="h-5 w-5" />
                     </div>
                   </div>
@@ -261,9 +261,9 @@ export default function Home() {
                         <span
                           className={`text-sm font-semibold ${
                             row.tone === 'positive'
-                              ? 'text-emerald-300'
+                              ? 'text-white'
                               : row.tone === 'negative'
-                                ? 'text-rose-300'
+                                ? 'text-slate-300'
                                 : 'text-slate-300'
                           }`}
                         >
@@ -311,9 +311,9 @@ export default function Home() {
                 </p>
               </div>
               <div className="flex items-center gap-3 text-xs uppercase tracking-wide text-slate-400">
-                <span className="inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                <span className="inline-flex h-2 w-2 rounded-full bg-white/80" />
                 SOC2-ready
-                <span className="inline-flex h-2 w-2 rounded-full bg-sky-400" />
+                <span className="inline-flex h-2 w-2 rounded-full bg-slate-300" />
                 GDPR-compliant
               </div>
             </div>
@@ -328,7 +328,7 @@ export default function Home() {
                 >
                   <div className="absolute inset-0 bg-gradient-to-br from-white/0 via-white/0 to-white/10 opacity-0 transition-opacity group-hover:opacity-100" />
                   <div className="relative flex h-full flex-col gap-4">
-                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg">
+                    <span className="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-slate-900 text-white shadow-lg">
                       <feature.icon className="h-5 w-5" />
                     </span>
                     <h3 className="text-lg font-semibold text-white">{feature.title}</h3>
@@ -355,7 +355,7 @@ export default function Home() {
                     key={step.title}
                     className="flex gap-4 rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-xl transition hover:border-white/30"
                   >
-                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-slate-900 text-white">
                       <step.icon className="h-5 w-5" />
                     </div>
                     <div className="space-y-1">

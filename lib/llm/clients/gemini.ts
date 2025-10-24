@@ -30,14 +30,14 @@ export async function queryGemini(prompt: string): Promise<GeminiResponse> {
             {
               parts: [
                 {
-                  text: `You are a helpful assistant that provides detailed, well-researched answers. ALWAYS include relevant website URLs and sources in your response. Format URLs clearly. Include at least 3-5 authoritative sources with their full URLs.\n\n${prompt}\n\nPlease include relevant website URLs and sources in your answer.`
+                  text: prompt
                 }
               ],
             },
           ],
           generationConfig: {
             temperature: 0.7,
-            maxOutputTokens: 8000,
+            maxOutputTokens: 2048,
           },
           safetySettings: [
             {

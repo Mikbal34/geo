@@ -5,7 +5,6 @@ import { useParams, useRouter } from 'next/navigation'
 import DatePicker from 'react-datepicker'
 import 'react-datepicker/dist/react-datepicker.css'
 import {
-  Activity,
   ArrowLeft,
   Calendar,
   ExternalLink,
@@ -26,6 +25,19 @@ import type { Prompt } from '@/types/prompt'
 type TimeFilter = '24h' | '7d' | '30d' | 'custom'
 type MonthlyView = 'daily' | 'weekly'
 type Theme = 'light' | 'dark'
+
+type PromptSentimentBreakdown = {
+  positive: number
+  neutral: number
+  negative: number
+}
+
+type PromptSummary = {
+  prompt: Prompt
+  runs: LLMRun[]
+  latestRunDate: string | null
+  sentiments: PromptSentimentBreakdown
+}
 
 const LLM_OPTIONS: Array<{ value: LLMProvider; label: string }> = [
   { value: 'chatgpt', label: 'ChatGPT' },
@@ -59,7 +71,7 @@ export default function AnalysisResultsPage() {
   const [startDate, setStartDate] = useState<Date | null>(null)
   const [endDate, setEndDate] = useState<Date | null>(null)
   const [customRangeApplied, setCustomRangeApplied] = useState(false)
-  const [openPrompts, setOpenPrompts] = useState<Set<string>>(new Set())
+  const [activePromptId, setActivePromptId] = useState<string | null>(null)
 
   useEffect(() => {
     const storedTheme = localStorage.getItem('auth_theme')
@@ -173,18 +185,6 @@ export default function AnalysisResultsPage() {
     }
   }, [startDate, endDate, timeFilter])
 
-  const togglePrompt = (key: string) => {
-    setOpenPrompts((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
-      return next
-    })
-  }
-
   const filteredRuns = useMemo(() => {
     if (selectedLLMs.length === 0 || selectedLLMs.length === LLM_OPTIONS.length) {
       return llmRuns
@@ -192,66 +192,88 @@ export default function AnalysisResultsPage() {
     return llmRuns.filter((run) => selectedLLMs.includes(run.llm as LLMProvider))
   }, [llmRuns, selectedLLMs])
 
-  const runsByAnalysis = useMemo(() => {
-    return availableRuns
-      .map((analysisRun) => {
-        const runsByPrompt = prompts
-          .map((prompt) => ({
-            prompt,
-            runs: filteredRuns.filter(
-              (run) => run.analysis_run_id === analysisRun.id && run.prompt_id === prompt.id,
-            ),
-          }))
-          .filter((group) => group.runs.length > 0)
+  const runsByPromptMap = useMemo(() => {
+    const map = new Map<string, LLMRun[]>()
+    filteredRuns.forEach((run) => {
+      if (!map.has(run.prompt_id)) {
+        map.set(run.prompt_id, [])
+      }
+      map.get(run.prompt_id)!.push(run)
+    })
+    map.forEach((runs) => {
+      runs.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    })
+    return map
+  }, [filteredRuns])
 
-        return {
-          analysisRun,
-          runsByPrompt,
-        }
-      })
-      .filter((group) => group.runsByPrompt.length > 0)
-  }, [availableRuns, prompts, filteredRuns])
+  const promptSummaries = useMemo<PromptSummary[]>(() => {
+    return prompts.map((prompt) => {
+      const runs = runsByPromptMap.get(prompt.id) ?? []
+      const sentiments = runs.reduce<PromptSentimentBreakdown>(
+        (acc, run) => {
+          if (run.sentiment === 'positive') {
+            acc.positive += 1
+          } else if (run.sentiment === 'negative') {
+            acc.negative += 1
+          } else {
+            acc.neutral += 1
+          }
+          return acc
+        },
+        { positive: 0, neutral: 0, negative: 0 },
+      )
+      const latestRun = runs[0] ?? null
+      return {
+        prompt,
+        runs,
+        latestRunDate: latestRun ? latestRun.created_at : null,
+        sentiments,
+      }
+    })
+  }, [prompts, runsByPromptMap])
 
-  const totalAnalyses = runsByAnalysis.length
+  const promptsWithResponsesCount = useMemo(() => {
+    return promptSummaries.filter((summary) => summary.runs.length > 0).length
+  }, [promptSummaries])
+
   const totalResponses = filteredRuns.length
   const totalPrompts = prompts.length
 
-  const latestRun = availableRuns.length > 0 ? availableRuns[0] : null
-  const previousRun = availableRuns.length > 1 ? availableRuns[1] : null
-  const latestRunDate = latestRun?.created_at
+  useEffect(() => {
+    if (promptSummaries.length === 0) {
+      if (activePromptId !== null) {
+        setActivePromptId(null)
+      }
+      return
+    }
 
-  const sentimentBreakdown = useMemo(() => {
-    return filteredRuns.reduce(
-      (acc, run) => {
-        if (run.sentiment === 'positive') {
-          acc.positive += 1
-        } else if (run.sentiment === 'negative') {
-          acc.negative += 1
-        } else {
-          acc.neutral += 1
-        }
-        return acc
-      },
-      { positive: 0, neutral: 0, negative: 0 },
-    )
-  }, [filteredRuns])
+    const existing = activePromptId
+      ? promptSummaries.find((summary) => summary.prompt.id === activePromptId)
+      : undefined
 
-  const promptsWithResponses = useMemo(() => {
-    const ids = new Set<string>()
-    filteredRuns.forEach((run) => ids.add(run.prompt_id))
-    return ids
-  }, [filteredRuns])
+    if (existing) {
+      return
+    }
 
-  const averageResponseLength = useMemo(() => {
-    if (!filteredRuns.length) return 0
-    const totalWords = filteredRuns.reduce((acc, run) => {
-      if (!run.response_text) return acc
-      const words = run.response_text.trim().split(/\s+/)
-      if (words.length === 1 && words[0] === '') return acc
-      return acc + words.length
-    }, 0)
-    return Math.round(totalWords / filteredRuns.length)
-  }, [filteredRuns])
+    const fallback = promptSummaries.find((summary) => summary.runs.length > 0) ?? promptSummaries[0]
+    setActivePromptId(fallback.prompt.id)
+  }, [promptSummaries, activePromptId])
+
+  const activePromptSummary = useMemo(() => {
+    if (!activePromptId) return null
+    return promptSummaries.find((summary) => summary.prompt.id === activePromptId) ?? null
+  }, [promptSummaries, activePromptId])
+
+  const activePromptRuns = useMemo(() => {
+    if (!activePromptSummary) return []
+    return [...activePromptSummary.runs].reverse()
+  }, [activePromptSummary])
+
+  const activePromptPositivePct = useMemo(() => {
+    if (!activePromptSummary || activePromptSummary.runs.length === 0) return null
+    const { sentiments } = activePromptSummary
+    return Math.round((sentiments.positive / activePromptSummary.runs.length) * 100)
+  }, [activePromptSummary])
 
   const llmBreakdown = useMemo(() => {
     const counts: Record<LLMProvider, number> = {
@@ -262,87 +284,8 @@ export default function AnalysisResultsPage() {
     filteredRuns.forEach((run) => {
       counts[run.llm] += 1
     })
-    const entries = Object.entries(counts) as Array<[LLMProvider, number]>
-    entries.sort((a, b) => b[1] - a[1])
-    return entries
+    return Object.entries(counts) as Array<[LLMProvider, number]>
   }, [filteredRuns])
-
-  const topLLMEntry = llmBreakdown[0]
-  const positivePct = totalResponses ? Math.round((sentimentBreakdown.positive / totalResponses) * 100) : 0
-  const neutralPct = totalResponses ? Math.round((sentimentBreakdown.neutral / totalResponses) * 100) : 0
-  const negativePct = totalResponses ? Math.round((sentimentBreakdown.negative / totalResponses) * 100) : 0
-
-  const visibilityDelta = useMemo(() => {
-    if (
-      !latestRun ||
-      !previousRun ||
-      latestRun.visibility_pct === undefined ||
-      latestRun.visibility_pct === null ||
-      previousRun.visibility_pct === undefined ||
-      previousRun.visibility_pct === null
-    ) {
-      return null
-    }
-    const delta = latestRun.visibility_pct - previousRun.visibility_pct
-    return {
-      label: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pts`,
-      positive: delta >= 0,
-    }
-  }, [latestRun, previousRun])
-
-  const sentimentDelta = useMemo(() => {
-    if (
-      !latestRun ||
-      !previousRun ||
-      latestRun.sentiment_pct === undefined ||
-      latestRun.sentiment_pct === null ||
-      previousRun.sentiment_pct === undefined ||
-      previousRun.sentiment_pct === null
-    ) {
-      return null
-    }
-    const delta = latestRun.sentiment_pct - previousRun.sentiment_pct
-    return {
-      label: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)} pts`,
-      positive: delta >= 0,
-    }
-  }, [latestRun, previousRun])
-
-  const positionDelta = useMemo(() => {
-    if (
-      !latestRun ||
-      !previousRun ||
-      latestRun.avg_position_raw === undefined ||
-      latestRun.avg_position_raw === null ||
-      previousRun.avg_position_raw === undefined ||
-      previousRun.avg_position_raw === null
-    ) {
-      return null
-    }
-    const delta = latestRun.avg_position_raw - previousRun.avg_position_raw
-    return {
-      label: `${delta >= 0 ? '+' : ''}${delta.toFixed(1)}`,
-      positive: delta <= 0,
-    }
-  }, [latestRun, previousRun])
-
-  const mentionsDelta = useMemo(() => {
-    if (
-      !latestRun ||
-      !previousRun ||
-      latestRun.mentions_raw_total === undefined ||
-      latestRun.mentions_raw_total === null ||
-      previousRun.mentions_raw_total === undefined ||
-      previousRun.mentions_raw_total === null
-    ) {
-      return null
-    }
-    const delta = latestRun.mentions_raw_total - previousRun.mentions_raw_total
-    return {
-      label: `${delta >= 0 ? '+' : ''}${delta}`,
-      positive: delta >= 0,
-    }
-  }, [latestRun, previousRun])
 
   const containerClass = [
     'relative min-h-screen px-4 pb-16 pt-12 transition-colors',
@@ -395,7 +338,7 @@ export default function AnalysisResultsPage() {
     <>
       <Navigation theme={theme} />
       <main className={containerClass}>
-        <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+        <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-wrap items-center gap-2">
               <button
@@ -425,230 +368,151 @@ export default function AnalysisResultsPage() {
           </div>
 
           <div className={`${panelClass} space-y-6`}>
-            <div className="flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
-              <div className="flex items-start gap-4">
-                <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg">
-                  <Activity className="h-5 w-5" />
+            <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-3">
+                <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide`}>
+                  Prompt workspace
                 </span>
-                <div className="space-y-2">
-                  <span
-                    className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide`}
-                  >
-                    Run explorer
-                  </span>
-                  <h1 className={`text-3xl font-semibold ${strongTextClass}`}>Analysis results</h1>
-                  <p className={`text-sm ${mutedTextClass}`}>
-                    Track how each LLM responded for your prompts, compare sentiment trends, and audit source references.
+                <div>
+                  <h1 className={`text-3xl font-semibold ${strongTextClass}`}>Prompts</h1>
+                  <p className={`mt-1 text-sm ${mutedTextClass}`}>
+                    Review prompt history, filter by provider, and inspect model answers in a chat-style timeline.
                   </p>
                 </div>
-              </div>
-              <div className={`${subPanelClass} w-full space-y-2 sm:max-w-xs`}>
-                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Latest completed run</p>
-                <p className={`text-base font-semibold ${strongTextClass}`}>
-                  {latestRunDate ? new Date(latestRunDate).toLocaleString() : 'Awaiting analyses'}
-                </p>
-                <p className={`text-xs ${mutedTextClass}`}>Filters reflect this time window and model selection.</p>
-              </div>
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className={`${subPanelClass} space-y-2`}>
-                <div className="flex items-center justify-between">
-                  <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Visibility score</p>
-                  {visibilityDelta ? (
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        visibilityDelta.positive
-                          ? 'bg-emerald-500/15 text-emerald-500'
-                          : 'bg-rose-500/15 text-rose-500'
-                      }`}
-                    >
-                      {visibilityDelta.label}
-                    </span>
-                  ) : (
-                    <span className={`text-[10px] ${mutedTextClass}`}>—</span>
-                  )}
+                <div className="flex flex-wrap items-center gap-3 text-xs">
+                  <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 font-medium`}>
+                    <Filter className="h-3.5 w-3.5" />
+                    {isAllLLMsSelected ? 'All models' : selectedLLMs.map((llm) => llm.toUpperCase()).join(', ')}
+                  </span>
+                  <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 font-medium`}>
+                    <Calendar className="h-3.5 w-3.5" />
+                    {timeFilter === 'custom'
+                      ? customRangeApplied && startDate && endDate
+                        ? `${startDate.toLocaleDateString()} - ${endDate.toLocaleDateString()}`
+                        : 'Custom range'
+                      : TIME_OPTIONS.find((option) => option.value === timeFilter)?.label}
+                  </span>
                 </div>
-                <p className={`text-2xl font-semibold ${strongTextClass}`}>
-                  {latestRun?.visibility_pct !== undefined && latestRun?.visibility_pct !== null
-                    ? `${Math.round(latestRun.visibility_pct)}%`
-                    : '—'}
-                </p>
-                <p className={`text-xs ${mutedTextClass}`}>Share of search surface captured by brand content.</p>
               </div>
 
-              <div className={`${subPanelClass} space-y-2`}>
-                <div className="flex items-center justify-between">
-                  <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Sentiment</p>
-                  {sentimentDelta ? (
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        sentimentDelta.positive
-                          ? 'bg-emerald-500/15 text-emerald-500'
-                          : 'bg-rose-500/15 text-rose-500'
-                      }`}
-                    >
-                      {sentimentDelta.label}
-                    </span>
-                  ) : (
-                    <span className={`text-[10px] ${mutedTextClass}`}>—</span>
-                  )}
+              <div className={`${subPanelClass} w-full space-y-3 md:max-w-xs`}>
+                <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Snapshot</p>
+                <div className="grid gap-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className={mutedTextClass}>Prompts</span>
+                    <span className={`font-semibold ${strongTextClass}`}>{totalPrompts || '—'}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className={mutedTextClass}>Active prompts</span>
+                    <span className={`font-semibold ${strongTextClass}`}>{promptsWithResponsesCount || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className={mutedTextClass}>Responses</span>
+                    <span className={`font-semibold ${strongTextClass}`}>{totalResponses || 0}</span>
+                  </div>
                 </div>
-                <p className={`text-2xl font-semibold ${strongTextClass}`}>
-                  {latestRun?.sentiment_pct !== undefined && latestRun?.sentiment_pct !== null
-                    ? `${Math.round(latestRun.sentiment_pct)}%`
-                    : '—'}
-                </p>
-                <p className={`text-xs ${mutedTextClass}`}>Overall positive tone detected in the latest run.</p>
-              </div>
-
-              <div className={`${subPanelClass} space-y-2`}>
-                <div className="flex items-center justify-between">
-                  <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Avg rank</p>
-                  {positionDelta ? (
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        positionDelta.positive
-                          ? 'bg-emerald-500/15 text-emerald-500'
-                          : 'bg-rose-500/15 text-rose-500'
-                      }`}
-                    >
-                      {positionDelta.label}
-                    </span>
-                  ) : (
-                    <span className={`text-[10px] ${mutedTextClass}`}>—</span>
-                  )}
-                </div>
-                <p className={`text-2xl font-semibold ${strongTextClass}`}>
-                  {latestRun?.avg_position_raw !== undefined && latestRun?.avg_position_raw !== null
-                    ? `#${latestRun.avg_position_raw.toFixed(1)}`
-                    : '—'}
-                </p>
-                <p className={`text-xs ${mutedTextClass}`}>Lower is better. Benchmarks across captured mentions.</p>
-              </div>
-
-              <div className={`${subPanelClass} space-y-2`}>
-                <div className="flex items-center justify-between">
-                  <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Mentions</p>
-                  {mentionsDelta ? (
-                    <span
-                      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        mentionsDelta.positive
-                          ? 'bg-emerald-500/15 text-emerald-500'
-                          : 'bg-rose-500/15 text-rose-500'
-                      }`}
-                    >
-                      {mentionsDelta.label}
-                    </span>
-                  ) : (
-                    <span className={`text-[10px] ${mutedTextClass}`}>—</span>
-                  )}
-                </div>
-                <p className={`text-2xl font-semibold ${strongTextClass}`}>
-                  {latestRun?.mentions_raw_total !== undefined && latestRun?.mentions_raw_total !== null
-                    ? latestRun.mentions_raw_total.toLocaleString()
-                    : '—'}
-                </p>
-                <p className={`text-xs ${mutedTextClass}`}>Raw brand mentions captured across all prompts.</p>
               </div>
             </div>
           </div>
 
-          <div className="grid gap-6 lg:grid-cols-[1.8fr_1fr]">
-            <div className={`${panelClass} space-y-6`}>
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <h2 className={`text-sm font-semibold ${strongTextClass}`}>Filters</h2>
-                  <p className={`text-xs ${mutedTextClass}`}>Tune the model mix and historical window for this view.</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedLLMs([])}
-                  className={`${isAllLLMsSelected ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors hover:opacity-90`}
-                  disabled={isAllLLMsSelected}
-                >
-                  <Filter className="h-3.5 w-3.5" />
-                  All models
-                </button>
-              </div>
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className={`${subPanelClass} space-y-4`}>
+          <div className="flex flex-col gap-6 lg:flex-row">
+            <aside className="flex w-full flex-col gap-6 lg:max-w-sm">
+              <div className={`${panelClass} space-y-6`}>
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>LLM selection</p>
-                    <p className={`text-sm ${mutedTextClass}`}>Compare responses across supported providers.</p>
+                    <h2 className={`text-sm font-semibold ${strongTextClass}`}>Filters</h2>
+                    <p className={`text-xs ${mutedTextClass}`}>Tune the model mix and historical window.</p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {LLM_OPTIONS.map((option) => {
-                      const active = isAllLLMsSelected || selectedLLMs.includes(option.value)
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => {
-                            setSelectedLLMs((prev) => {
-                              const prevAll = prev.length === 0 || prev.length === LLM_OPTIONS.length
-                              if (prevAll) {
-                                return [option.value]
-                              }
-                              if (prev.includes(option.value)) {
-                                const next = prev.filter((item) => item !== option.value)
-                                return next.length ? next : []
-                              }
-                              return [...prev, option.value]
-                            })
-                          }}
-                          className={`${active ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
-                        >
-                          <span className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${getLLMColor(option.value)}`} />
-                          {option.label}
-                        </button>
-                      )
-                    })}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedLLMs([])}
+                    className={`${isAllLLMsSelected ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors hover:opacity-90`}
+                    disabled={isAllLLMsSelected}
+                  >
+                    <Filter className="h-3.5 w-3.5" />
+                    All models
+                  </button>
                 </div>
 
-                <div className={`${subPanelClass} space-y-4`}>
-                  <div>
-                    <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Time window</p>
-                    <p className={`text-sm ${mutedTextClass}`}>Shift the time horizon to explore historical runs.</p>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {TIME_OPTIONS.map((option) => {
-                      const active = timeFilter === option.value
-                      return (
-                        <button
-                          key={option.value}
-                          type="button"
-                          onClick={() => handleTimeFilterChange(option.value)}
-                          className={`${active ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
-                        >
-                          {option.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                  {timeFilter === '30d' && (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className={`text-xs font-medium ${mutedTextClass}`}>Granularity:</span>
-                      <div className={`inline-flex rounded-full border px-1 py-1 ${dividerClass}`}>
-                        <button
-                          type="button"
-                          onClick={() => setMonthlyView('daily')}
-                          className={`${monthlyView === 'daily' ? chipActiveClass : chipClass} rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
-                        >
-                          Daily
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setMonthlyView('weekly')}
-                          className={`${monthlyView === 'weekly' ? chipActiveClass : chipClass} rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
-                        >
-                          Weekly
-                        </button>
-                      </div>
+                <div className="space-y-4">
+                  <div className={`${subPanelClass} space-y-3`}>
+                    <div>
+                      <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>LLM selection</p>
+                      <p className={`text-xs ${mutedTextClass}`}>Compare responses across supported providers.</p>
                     </div>
-                  )}
+                    <div className="flex flex-wrap gap-2">
+                      {LLM_OPTIONS.map((option) => {
+                        const active = isAllLLMsSelected || selectedLLMs.includes(option.value)
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => {
+                              setSelectedLLMs((prev) => {
+                                const prevAll = prev.length === 0 || prev.length === LLM_OPTIONS.length
+                                if (prevAll) {
+                                  return [option.value]
+                                }
+                                if (prev.includes(option.value)) {
+                                  const next = prev.filter((item) => item !== option.value)
+                                  return next.length ? next : []
+                                }
+                                return [...prev, option.value]
+                              })
+                            }}
+                            className={`${active ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                          >
+                            <span className={`h-2.5 w-2.5 rounded-full bg-gradient-to-r ${getLLMColor(option.value)}`} />
+                            {option.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+
+                  <div className={`${subPanelClass} space-y-3`}>
+                    <div>
+                      <p className={`text-xs font-medium uppercase tracking-wide ${mutedTextClass}`}>Time window</p>
+                      <p className={`text-xs ${mutedTextClass}`}>Shift the time horizon to explore historical runs.</p>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {TIME_OPTIONS.map((option) => {
+                        const active = timeFilter === option.value
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => handleTimeFilterChange(option.value)}
+                            className={`${active ? chipActiveClass : chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                          >
+                            {option.label}
+                          </button>
+                        )
+                      })}
+                    </div>
+                    {timeFilter === '30d' && (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`text-xs font-medium ${mutedTextClass}`}>Granularity:</span>
+                        <div className={`inline-flex rounded-full border px-1 py-1 ${dividerClass}`}>
+                          <button
+                            type="button"
+                            onClick={() => setMonthlyView('daily')}
+                            className={`${monthlyView === 'daily' ? chipActiveClass : chipClass} rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                          >
+                            Daily
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setMonthlyView('weekly')}
+                            className={`${monthlyView === 'weekly' ? chipActiveClass : chipClass} rounded-full px-3 py-1 text-xs font-semibold transition-colors`}
+                          >
+                            Weekly
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   {timeFilter === 'custom' && (
                     <div className={`${subPanelClass} space-y-4`}>
                       <div className="grid gap-4 sm:grid-cols-2">
@@ -701,300 +565,95 @@ export default function AnalysisResultsPage() {
                   )}
                 </div>
               </div>
-            </div>
 
-            <div className={`${panelClass} space-y-4`}>
-              <div className="flex items-center justify-between">
-                <div>
-                  <h2 className={`text-sm font-semibold ${strongTextClass}`}>Quick insights</h2>
-                  <p className={`text-xs ${mutedTextClass}`}>Snapshot of engagement across the selected filters.</p>
-                </div>
-                <span
-                  className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide`}
-                >
-                  {totalResponses} responses
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                <div className={`${subPanelClass} flex items-start gap-3`}>
-                  <Sparkles className="h-5 w-5 text-amber-400" />
+              <div className={`${panelClass} flex h-full flex-col`}>
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Prompts engaged</p>
-                    <p className={`text-sm font-semibold ${strongTextClass}`}>
-                      {promptsWithResponses.size} / {totalPrompts || '—'}
-                    </p>
-                    <p className={`text-xs ${mutedTextClass}`}>Active prompts with at least one response this period.</p>
+                    <h2 className={`text-sm font-semibold ${strongTextClass}`}>Prompts</h2>
+                    <p className={`text-xs ${mutedTextClass}`}>Select a prompt to inspect responses.</p>
                   </div>
-                </div>
-
-                <div className={`${subPanelClass} flex items-start gap-3`}>
-                  <MessageSquare className="h-5 w-5 text-sky-400" />
-                  <div>
-                    <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Avg response length</p>
-                    <p className={`text-sm font-semibold ${strongTextClass}`}>
-                      {averageResponseLength ? `${averageResponseLength} words` : '—'}
-                    </p>
-                    <p className={`text-xs ${mutedTextClass}`}>Textual depth captured across generated answers.</p>
-                  </div>
-                </div>
-
-                <div className={`${subPanelClass} flex items-start gap-3`}>
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-500">
-                    <TrendingUp className="h-4 w-4" />
-                  </div>
-                  <div className="flex-1 space-y-1">
-                    <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Sentiment mix</p>
-                    {totalResponses ? (
-                      <div className="grid grid-cols-3 gap-2 text-center">
-                        <div className="rounded-xl bg-emerald-500/10 py-2">
-                          <p className={`text-sm font-semibold text-emerald-400`}>{positivePct}%</p>
-                          <p className={`text-[11px] ${mutedTextClass}`}>Positive</p>
-                        </div>
-                        <div className="rounded-xl bg-slate-500/10 py-2">
-                          <p className={`text-sm font-semibold ${mutedTextClass}`}>{neutralPct}%</p>
-                          <p className={`text-[11px] ${mutedTextClass}`}>Neutral</p>
-                        </div>
-                        <div className="rounded-xl bg-rose-500/10 py-2">
-                          <p className={`text-sm font-semibold text-rose-400`}>{negativePct}%</p>
-                          <p className={`text-[11px] ${mutedTextClass}`}>Negative</p>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className={`text-xs ${mutedTextClass}`}>Sentiment data appears once analyses are available.</p>
-                    )}
-                  </div>
-                </div>
-
-                <div className={`${subPanelClass} flex items-start gap-3`}>
-                  <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-purple-500/10 text-purple-400">
-                    <Activity className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Leading model</p>
-                    <p className={`text-sm font-semibold ${strongTextClass}`}>
-                      {topLLMEntry && topLLMEntry[1] > 0 ? (
-                        <>
-                          {LLM_OPTIONS.find((option) => option.value === topLLMEntry[0])?.label}{' '}
-                          <span className={`text-xs ${mutedTextClass}`}>
-                            ({Math.round((topLLMEntry[1] / (totalResponses || 1)) * 100)}%)
-                          </span>
-                        </>
-                      ) : (
-                        'Awaiting data'
-                      )}
-                    </p>
-                    <p className={`text-xs ${mutedTextClass}`}>Highest share of responses within the current filters.</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid gap-6 xl:grid-cols-[2fr_1fr]">
-            <section className={`${panelClass} space-y-6`}>
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <h2 className={`text-sm font-semibold ${strongTextClass}`}>Detailed responses</h2>
-                  <p className={`text-xs ${mutedTextClass}`}>Expand prompts to review per-model answers and source links.</p>
-                </div>
-                {totalAnalyses > 1 && (
-                  <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold`}>
-                    {totalAnalyses} analyses
+                  <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide`}>
+                    {promptsWithResponsesCount}/{totalPrompts || '—'} active
                   </span>
-                )}
+                </div>
+                <div className="mt-4 flex-1 space-y-3 overflow-y-auto pr-1">
+                  {promptSummaries.length ? (
+                    promptSummaries.map((summary) => {
+                      const isActive = summary.prompt.id === activePromptId
+                      const total = summary.runs.length
+                      const positivePct = total ? Math.round((summary.sentiments.positive / total) * 100) : 0
+                      const neutralPct = total ? Math.round((summary.sentiments.neutral / total) * 100) : 0
+                      const negativePct = total ? Math.round((summary.sentiments.negative / total) * 100) : 0
+                      return (
+                        <button
+                          key={summary.prompt.id}
+                          type="button"
+                          onClick={() => setActivePromptId(summary.prompt.id)}
+                          className={`w-full rounded-2xl border p-4 text-left transition-all ${
+                            isActive
+                              ? isDark
+                                ? 'border-white/30 bg-white/10 shadow-lg shadow-black/30'
+                                : 'border-slate-900 bg-slate-900/5 shadow-lg shadow-slate-200/80'
+                              : isDark
+                                ? 'border-white/10 bg-white/5 hover:border-white/20'
+                                : 'border-slate-200 bg-white hover:border-slate-300'
+                          }`}
+                        >
+                          <p className={`text-sm font-semibold ${strongTextClass}`}>{summary.prompt.prompt_text}</p>
+                          <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                            <span className={mutedTextClass}>{total} response{total === 1 ? '' : 's'}</span>
+                            <span className={mutedTextClass}>
+                              {summary.latestRunDate
+                                ? new Date(summary.latestRunDate).toLocaleString()
+                                : 'Awaiting responses'}
+                            </span>
+                          </div>
+                          {total ? (
+                            <div className="mt-3 grid grid-cols-3 gap-2 text-center text-[11px]">
+                              <div className="rounded-xl bg-emerald-500/10 px-2 py-2">
+                                <p className="font-semibold text-emerald-400">{positivePct}%</p>
+                                <p className={mutedTextClass}>Positive</p>
+                              </div>
+                              <div className="rounded-xl bg-slate-500/10 px-2 py-2">
+                                <p className="font-semibold text-slate-400">{neutralPct}%</p>
+                                <p className={mutedTextClass}>Neutral</p>
+                              </div>
+                              <div className="rounded-xl bg-rose-500/10 px-2 py-2">
+                                <p className="font-semibold text-rose-400">{negativePct}%</p>
+                                <p className={mutedTextClass}>Negative</p>
+                              </div>
+                            </div>
+                          ) : (
+                            <p className={`mt-3 text-xs ${mutedTextClass}`}>No responses during this window.</p>
+                          )}
+                        </button>
+                      )
+                    })
+                  ) : (
+                    <p className={`text-sm ${mutedTextClass}`}>Prompts will appear here once created.</p>
+                  )}
+                </div>
               </div>
 
-              {runsByAnalysis.length === 0 ? (
-                <div className={`${subPanelClass} flex flex-col items-center gap-3 py-12 text-center`}>
-                  <Sparkles className="h-6 w-6 text-amber-400" />
-                  <p className={`text-sm font-semibold ${strongTextClass}`}>No responses yet</p>
-                  <p className={`text-xs ${mutedTextClass}`}>
-                    Trigger a new analysis from the dashboard to populate this view.
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {runsByAnalysis.map(({ analysisRun, runsByPrompt }) => {
-                    const runCreatedAt = analysisRun.created_at ? new Date(analysisRun.created_at).toLocaleString() : null
-                    const summaryItems = [
-                      {
-                        label: 'Visibility',
-                        value:
-                          analysisRun.visibility_pct !== undefined && analysisRun.visibility_pct !== null
-                            ? `${Math.round(analysisRun.visibility_pct)}%`
-                            : '—',
-                      },
-                      {
-                        label: 'Sentiment',
-                        value:
-                          analysisRun.sentiment_pct !== undefined && analysisRun.sentiment_pct !== null
-                            ? `${Math.round(analysisRun.sentiment_pct)}%`
-                            : '—',
-                      },
-                      {
-                        label: 'Avg rank',
-                        value:
-                          analysisRun.avg_position_raw !== undefined && analysisRun.avg_position_raw !== null
-                            ? `#${Number(analysisRun.avg_position_raw).toFixed(1)}`
-                            : '—',
-                      },
-                      {
-                        label: 'Mentions',
-                        value:
-                          analysisRun.mentions_raw_total !== undefined && analysisRun.mentions_raw_total !== null
-                            ? Number(analysisRun.mentions_raw_total).toLocaleString()
-                            : '—',
-                      },
-                    ]
-
-                    return (
-                      <div key={analysisRun.id} className={`${subPanelClass} space-y-4`}>
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                          <div>
-                            <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Analysis run</p>
-                            <p className={`text-sm font-semibold ${strongTextClass}`}>
-                              {runCreatedAt ?? 'Completed run'}
-                            </p>
-                            <p className={`text-xs ${mutedTextClass}`}>
-                              {analysisRun.aggregation_type
-                                ? `${analysisRun.aggregation_type === 'weekly' ? 'Weekly aggregate' : 'Daily aggregate'} • ${
-                                    analysisRun.runs_count || 1
-                                  } run${analysisRun.runs_count === 1 ? '' : 's'}`
-                                : 'Individual analysis'}
-                            </p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2 text-right sm:text-left md:grid-cols-4">
-                            {summaryItems.map((item) => (
-                              <div key={item.label} className="rounded-xl bg-white/5 px-3 py-2 text-left">
-                                <p className={`text-[11px] uppercase tracking-wide ${mutedTextClass}`}>{item.label}</p>
-                                <p className={`text-sm font-semibold ${strongTextClass}`}>{item.value}</p>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-
-                        <div className="space-y-3">
-                          {runsByPrompt.map(({ prompt, runs }) => {
-                            const key = `${analysisRun.id}-${prompt.id}`
-                            const isOpen = openPrompts.has(key)
-                            return (
-                              <div key={key} className={`${subPanelClass}`}>
-                                <button
-                                  type="button"
-                                  onClick={() => togglePrompt(key)}
-                                  className="flex w-full items-center justify-between gap-4 text-left"
-                                >
-                                  <div className="flex items-start gap-3">
-                                    <Sparkles className="h-5 w-5 text-amber-400" />
-                                    <div>
-                                      <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Prompt</p>
-                                      <p className={`text-sm font-semibold ${strongTextClass}`}>{prompt.prompt_text}</p>
-                                    </div>
-                                  </div>
-                                  <span className={`text-xs font-semibold ${mutedTextClass}`}>
-                                    {runs.length} response{runs.length === 1 ? '' : 's'}
-                                  </span>
-                                </button>
-
-                                {isOpen && (
-                                  <div className={`mt-4 space-y-4 border-t pt-4 ${dividerClass}`}>
-                                    {runs.map((run) => (
-                                      <div
-                                        key={run.id}
-                                        className={`rounded-2xl border p-4 transition-colors ${
-                                          isDark ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'
-                                        }`}
-                                      >
-                                        <div className="flex flex-wrap items-center justify-between gap-3">
-                                          <div className="flex flex-wrap items-center gap-2">
-                                            <span
-                                              className={`inline-flex items-center gap-2 rounded-full bg-gradient-to-r ${getLLMColor(
-                                                run.llm,
-                                              )} px-3 py-1 text-xs font-semibold text-white`}
-                                            >
-                                              {run.llm.toUpperCase()}
-                                            </span>
-                                            <span className={`text-xs ${mutedTextClass} capitalize`}>
-                                              {run.sentiment || 'neutral'}
-                                            </span>
-                                            {getSentimentIcon(run.sentiment)}
-                                          </div>
-                                          <span className={`text-xs ${mutedTextClass}`}>
-                                            {new Date(run.created_at).toLocaleString()}
-                                          </span>
-                                        </div>
-
-                                        <p className={`mt-3 text-sm leading-relaxed ${bodyTextClass}`}>
-                                          {run.response_text}
-                                        </p>
-
-                                        {run.sources && run.sources.length > 0 && (
-                                          <div className={`mt-4 border-t pt-3 ${dividerClass}`}>
-                                            <p className={`text-xs font-semibold ${strongTextClass}`}>Sources</p>
-                                            <div className="mt-2 space-y-1.5">
-                                              {run.sources.slice(0, 5).map((source, idx) => (
-                                                <a
-                                                  key={idx}
-                                                  href={source.url}
-                                                  target="_blank"
-                                                  rel="noopener noreferrer"
-                                                  className={`flex items-center gap-2 text-xs transition-colors ${
-                                                    isDark
-                                                      ? 'text-slate-300 hover:text-white'
-                                                      : 'text-slate-600 hover:text-slate-900'
-                                                  }`}
-                                                >
-                                                  <ExternalLink className="h-3 w-3" />
-                                                  <span className="truncate">{source.title || source.url}</span>
-                                                  {source.rank && (
-                                                    <span
-                                                      className={`${chipClass} ml-auto inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold`}
-                                                    >
-                                                      #{source.rank}
-                                                    </span>
-                                                  )}
-                                                </a>
-                                              ))}
-                                            </div>
-                                          </div>
-                                        )}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )
-                          })}
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
-              )}
-            </section>
-
-            <aside className="flex flex-col gap-6">
               <div className={`${panelClass} space-y-4`}>
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className={`text-sm font-semibold ${strongTextClass}`}>Analysis timeline</h2>
-                    <p className={`text-xs ${mutedTextClass}`}>Recent runs aligned with the current filters.</p>
+                    <h2 className={`text-sm font-semibold ${strongTextClass}`}>Run history</h2>
+                    <p className={`text-xs ${mutedTextClass}`}>Latest completed analyses under current filters.</p>
                   </div>
-                  <Calendar className={`h-4 w-4 ${mutedTextClass}`} />
+                  <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-wide`}>
+                    {availableRuns.length}
+                  </span>
                 </div>
                 {availableRuns.length === 0 ? (
-                  <p className={`text-xs ${mutedTextClass}`}>Run history will appear after your first analysis.</p>
+                  <p className={`text-xs ${mutedTextClass}`}>Run at least one analysis to populate history.</p>
                 ) : (
                   <div className="space-y-3">
-                    {availableRuns.slice(0, 6).map((run: any) => (
-                      <div
-                        key={run.id}
-                        className={`${subPanelClass} flex items-start justify-between gap-4`}
-                      >
+                    {availableRuns.slice(0, 5).map((run) => (
+                      <div key={run.id} className={`${subPanelClass} flex items-center justify-between gap-3`}>
                         <div>
                           <p className={`text-sm font-semibold ${strongTextClass}`}>
-                            {run.created_at ? new Date(run.created_at).toLocaleString() : 'Completed run'}
+                            {new Date(run.created_at).toLocaleString()}
                           </p>
                           <p className={`text-xs ${mutedTextClass}`}>
                             {run.aggregation_type
@@ -1037,7 +696,7 @@ export default function AnalysisResultsPage() {
                       return (
                         <div key={provider} className="space-y-1">
                           <div className="flex items-center justify-between text-xs">
-                            <span className={`${strongTextClass}`}>{label}</span>
+                            <span className={strongTextClass}>{label}</span>
                             <span className={mutedTextClass}>
                               {count} ({percentage}%)
                             </span>
@@ -1055,6 +714,124 @@ export default function AnalysisResultsPage() {
                 )}
               </div>
             </aside>
+
+            <section className="flex-1">
+              <div className={`${panelClass} flex h-full flex-col`}>
+                {activePromptSummary ? (
+                  <>
+                    <div className={`flex flex-col gap-4 border-b pb-4 ${dividerClass}`}>
+                      <div className="flex items-start gap-3">
+                        <span className="inline-flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 text-white shadow-lg">
+                          <Sparkles className="h-5 w-5" />
+                        </span>
+                        <div className="space-y-1">
+                          <p className={`text-xs uppercase tracking-wide ${mutedTextClass}`}>Prompt</p>
+                          <h2 className={`text-xl font-semibold ${strongTextClass}`}>
+                            {activePromptSummary.prompt.prompt_text}
+                          </h2>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 font-semibold`}>
+                          <MessageSquare className="h-3.5 w-3.5" />
+                          {activePromptSummary.runs.length} response{activePromptSummary.runs.length === 1 ? '' : 's'}
+                        </span>
+                        {activePromptPositivePct !== null && (
+                          <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 font-semibold`}>
+                            <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />
+                            {activePromptPositivePct}% positive
+                          </span>
+                        )}
+                        {activePromptSummary.latestRunDate && (
+                          <span className={`${chipClass} inline-flex items-center gap-2 rounded-full px-3 py-1 font-semibold`}>
+                            <Calendar className="h-3.5 w-3.5" />
+                            {new Date(activePromptSummary.latestRunDate).toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 flex-1 space-y-4 overflow-y-auto pr-1">
+                      {activePromptRuns.length ? (
+                        activePromptRuns.map((run) => {
+                          const llmLabel = LLM_OPTIONS.find((option) => option.value === run.llm)?.label ?? run.llm
+                          return (
+                            <div key={run.id} className="space-y-3">
+                              <div className="flex flex-wrap items-center justify-between gap-3">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className={`inline-flex items-center gap-2 rounded-full bg-gradient-to-r ${getLLMColor(run.llm)} px-3 py-1 text-xs font-semibold text-white`}>
+                                    {llmLabel}
+                                  </span>
+                                  <span className={`text-xs capitalize ${mutedTextClass}`}>{run.sentiment ?? 'neutral'}</span>
+                                  {getSentimentIcon(run.sentiment)}
+                                </div>
+                                <span className={`text-xs ${mutedTextClass}`}>
+                                  {new Date(run.created_at).toLocaleString()}
+                                </span>
+                              </div>
+
+                              <div className={`rounded-2xl border p-4 transition-colors ${
+                                isDark ? 'border-white/10 bg-white/5' : 'border-slate-200 bg-white'
+                              }`}>
+                                <p className={`text-sm leading-relaxed ${bodyTextClass}`}>{run.response_text}</p>
+                                <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                                  {run.position !== null && run.position !== undefined ? (
+                                    <span className={`${chipClass} inline-flex items-center gap-1 rounded-full px-3 py-1 font-semibold`}>
+                                      #{run.position} rank
+                                    </span>
+                                  ) : null}
+                                  <span className={`${chipClass} inline-flex items-center gap-1 rounded-full px-3 py-1 font-semibold`}>
+                                    {run.mentions_count} mentions
+                                  </span>
+                                </div>
+                                {run.sources && run.sources.length > 0 && (
+                                  <div className={`mt-4 border-t pt-3 ${dividerClass}`}>
+                                    <p className={`text-xs font-semibold ${strongTextClass}`}>Sources</p>
+                                    <div className="mt-2 space-y-1.5">
+                                      {run.sources.slice(0, 5).map((source, idx) => (
+                                        <a
+                                          key={idx}
+                                          href={source.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className={`flex items-center gap-2 text-xs transition-colors ${
+                                            isDark
+                                              ? 'text-slate-300 hover:text-white'
+                                              : 'text-slate-600 hover:text-slate-900'
+                                          }`}
+                                        >
+                                          <ExternalLink className="h-3 w-3" />
+                                          <span className="truncate">{source.title || source.url}</span>
+                                          {source.rank && (
+                                            <span className={`${chipClass} ml-auto inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold`}>
+                                              #{source.rank}
+                                            </span>
+                                          )}
+                                        </a>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <div className="flex min-h-[260px] items-center justify-center rounded-2xl border border-dashed border-slate-400/40">
+                          <p className={`text-sm ${mutedTextClass}`}>
+                            This prompt does not have responses within the selected filters.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex min-h-[320px] items-center justify-center">
+                    <p className={`text-sm ${mutedTextClass}`}>Add prompts to start collecting answers.</p>
+                  </div>
+                )}
+              </div>
+            </section>
           </div>
         </div>
       </main>
@@ -1081,6 +858,7 @@ function getSentimentIcon(sentiment: string | null) {
       return <TrendingUp className="h-4 w-4 text-emerald-400" />
     case 'negative':
       return <TrendingDown className="h-4 w-4 text-rose-400" />
+    case 'neutral':
     default:
       return <Minus className="h-4 w-4 text-slate-400" />
   }

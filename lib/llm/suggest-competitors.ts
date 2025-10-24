@@ -7,10 +7,12 @@ export async function generateCompetitorSuggestions(
   count: number = 10
 ): Promise<Array<{ name: string; domain: string; region: string }>> {
   try {
-    const prompt = SUGGEST_COMPETITORS_TEMPLATE.replace('{count}', count.toString())
+    const brandRegion = brand.region || 'Global'
+    const prompt = SUGGEST_COMPETITORS_TEMPLATE
+      .replace('{count}', count.toString())
       .replace('{brand_name}', brand.brand_name)
       .replace('{domain}', brand.domain || 'N/A')
-      .replace('{region}', brand.region || 'Global')
+      .replaceAll('{region}', brandRegion)
 
     const completion = await openai.chat.completions.create({
       model: 'gpt-4-turbo-preview',
@@ -18,7 +20,7 @@ export async function generateCompetitorSuggestions(
         {
           role: 'system',
           content:
-            'You are a market research expert. Identify real, direct competitors for brands. Return only valid JSON in this format: {"competitors": [{"name": "...", "domain": "...", "region": "..."}]}',
+            'You are a market research expert. Identify real, direct competitors for brands. IMPORTANT: All competitors MUST be from the SAME REGION as the brand. Return only valid JSON in this format: {"competitors": [{"name": "...", "domain": "...", "region": "..."}]}',
         },
         {
           role: 'user',
@@ -50,16 +52,22 @@ export async function generateCompetitorSuggestions(
       throw new Error('Invalid response format from OpenAI')
     }
 
-    // Validate structure
+    // Validate structure and enforce region requirement
     const validCompetitors = competitors
       .filter((c: any) => c.name && c.domain)
       .map((c: any) => ({
         name: String(c.name),
         domain: String(c.domain),
-        region: c.region ? String(c.region) : brand.region,
+        // Force all competitors to have the same region as the brand
+        region: brandRegion,
       }))
       .slice(0, count)
 
+    if (validCompetitors.length === 0) {
+      throw new Error(`No valid competitors found for ${brand.brand_name} in ${brandRegion}`)
+    }
+
+    console.log(`✓ Generated ${validCompetitors.length} competitors for ${brand.brand_name} in ${brandRegion}`)
     return validCompetitors
   } catch (error) {
     console.error('Error generating competitor suggestions:', error)

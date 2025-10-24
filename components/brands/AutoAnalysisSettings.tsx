@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { Settings, Save } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -17,6 +18,7 @@ const PRESET_INTERVALS = [
 ]
 
 export default function AutoAnalysisSettings({ brandId }: AutoAnalysisSettingsProps) {
+  const router = useRouter()
   const [enabled, setEnabled] = useState(true)
   const [interval, setInterval] = useState(1440)
   const [customMode, setCustomMode] = useState(false)
@@ -32,7 +34,9 @@ export default function AutoAnalysisSettings({ brandId }: AutoAnalysisSettingsPr
 
   const fetchSettings = async () => {
     try {
-      const res = await fetch(`/api/brands/${brandId}/auto-analysis-settings`, {
+      // Add timestamp to bypass cache
+      const timestamp = new Date().getTime()
+      const res = await fetch(`/api/brands/${brandId}/auto-analysis-settings?t=${timestamp}`, {
         cache: 'no-store',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
@@ -93,6 +97,9 @@ export default function AutoAnalysisSettings({ brandId }: AutoAnalysisSettingsPr
 
       console.log('Saved settings response:', data)
       alert('✅ Auto-analysis settings saved successfully!')
+
+      // Refresh router cache and refetch settings
+      router.refresh()
       await fetchSettings()
     } catch (error) {
       console.error('Error saving settings:', error)
